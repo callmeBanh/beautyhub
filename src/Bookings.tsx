@@ -394,6 +394,7 @@ export function BookingDetail() {
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [modal, setModal] = useState(""),
+    [modalError, setModalError] = useState(""),
     [busy, setBusy] = useState(false);
   const now = useClock();
   async function load() {
@@ -436,7 +437,12 @@ export function BookingDetail() {
     const interval = setInterval(() => void load(), 30000);
     return () => clearInterval(interval);
   }, [id]);
+  useEffect(() => {
+    setModalError("");
+  }, [modal]);
   async function action(name: string, detail = "") {
+    setError("");
+    setModalError("");
     setBusy(true);
     try {
       await rpc("booking_action", {
@@ -448,7 +454,8 @@ export function BookingDetail() {
       await load();
       toast("Đã cập nhật booking.");
     } catch (e) {
-      setError(errorText(e));
+      if (modal) setModalError(errorText(e));
+      else setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -832,6 +839,7 @@ export function BookingDetail() {
                 return;
               }
               setBusy(true);
+              setModalError("");
               try {
                 if (modal === "SUPPORT")
                   await rpc("request_support", {
@@ -857,13 +865,13 @@ export function BookingDetail() {
                 await load();
                 toast("Đã gửi thành công.");
               } catch (e) {
-                setError(errorText(e));
+                setModalError(errorText(e));
               } finally {
                 setBusy(false);
               }
             }}
           >
-            {error && <Alert>{error}</Alert>}
+            {modalError && <Alert>{modalError}</Alert>}
             {modal === "SUPPORT" && (
               <Field label="Bạn cần hỗ trợ về">
                 <select name="kind">
@@ -905,7 +913,9 @@ export function BookingDetail() {
                 <textarea
                   name="detail"
                   required
-                  minLength={10}
+                  minLength={
+                    ["VERIFY_PAYMENT", "REFUND"].includes(modal) ? 6 : 10
+                  }
                   maxLength={2000}
                   rows={4}
                 />

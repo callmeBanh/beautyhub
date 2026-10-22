@@ -32,13 +32,16 @@ beforeAll(async () => {
   db = new PGlite({ extensions: { btree_gist } });
   await db.waitReady;
   await db.exec(
-    `create schema auth;create schema storage;create schema extensions;create role anon;create role authenticated;create table auth.users(id uuid primary key,raw_user_meta_data jsonb default '{}');create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;grant usage on schema auth,public,storage to anon,authenticated;grant execute on function auth.uid() to anon,authenticated;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text);alter table storage.objects enable row level security;grant select,insert on storage.objects to anon,authenticated;create function storage.foldername(text) returns text[] language sql as $$select string_to_array($1,'/')$$;`,
+    `create schema auth;create schema storage;create schema extensions;create role anon;create role authenticated;create table auth.users(id uuid primary key,raw_user_meta_data jsonb default '{}');create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;grant usage on schema auth,public,storage to anon,authenticated;grant execute on function auth.uid() to anon,authenticated;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text);alter table storage.objects enable row level security;grant select,insert,delete on storage.objects to anon,authenticated;create function storage.foldername(text) returns text[] language sql as $$select string_to_array($1,'/')$$;`,
   );
   await db.exec(
     readFileSync("supabase/migrations/202610050001_beta.sql", "utf8"),
   );
   await db.exec(
     readFileSync("supabase/migrations/202610050002_operations.sql", "utf8"),
+  );
+  await db.exec(
+    readFileSync("supabase/migrations/202610210001_hardening.sql", "utf8"),
   );
   await db.query("insert into auth.users(id) values ($1),($2),($3),($4)", [
     customer,
@@ -419,5 +422,100 @@ describe("PostgreSQL booking and authorization", () => {
         await call("select status from public.bookings where id=$1", [booking])
       )[0].status,
     ).toBe("EXPIRED");
+  });
+});
+
+describe("hardening migration", () => {
+  it("settings table is admin-only; public_settings hides bank details", async () => {
+    await as(null, "anon");
+    await expect(call("select * from public.settings")).rejects.toThrow(
+      /permission denied/,
+    );
+    const rows = await call("select * from public.public_settings()");
+    expect(rows[0]).toMatchObject({ ready: true, policy_version: 1 });
+    expect(Object.keys(rows[0])).not.toContain("bank_account");
+    await as(customer);
+    expect(await call("select * from public.settings")).toHaveLength(0);
+    await as(admin);
+    expect(await call("select * from public.settings")).toHaveLength(1);
+  });
+  it("availability of unapproved providers is not public", async () => {
+    await as(null, "anon");
+    expect(
+      (await call("select * from public.availability")).length,
+    ).toBeGreaterThan(0);
+    await db.exec("reset role");
+    await db.query("update public.providers set status='PENDING' where id=$1", [
+      provider,
+    ]);
+    await as(null, "anon");
+    expect(await call("select * from public.availability")).toHaveLength(0);
+    await as(owner);
+    expect(
+      (await call("select * from public.availability")).length,
+    ).toBeGreaterThan(0);
+    await db.exec("reset role");
+    await db.query(
+      "update public.providers set status='APPROVED' where id=$1",
+      [provider],
+    );
+  });
+  it("a transfer reference cannot confirm two bookings", async () => {
+    await db.exec("reset role");
+    await db.exec(
+      "update public.bookings set status='CANCELLED',hold_until=null where status in ('REQUESTED','AWAITING_DEPOSIT','PAYMENT_REVIEW','CONFIRMED')",
+    );
+    await as(customer);
+    const a = (await create(`${day}T09:00:00+07:00`))[0].id;
+    const b = (await create(`${day}T13:00:00+07:00`))[0].id;
+    await db.exec("reset role");
+    await db.query(
+      "update public.bookings set status='PAYMENT_REVIEW',payment_status='REPORTED' where id in ($1,$2)",
+      [a, b],
+    );
+    await as(admin);
+    await call("select public.booking_action($1,'VERIFY_PAYMENT','FT123456')", [
+      a,
+    ]);
+    await expect(
+      call("select public.booking_action($1,'VERIFY_PAYMENT','ft123456 ')", [b]),
+    ).rejects.toThrow(/đã được dùng/);
+    await call("select public.booking_action($1,'VERIFY_PAYMENT','FT654321')", [
+      b,
+    ]);
+  });
+  it("creator removes own portfolio image only while keeping 3 on a live profile", async () => {
+    const path = owner + "/test.webp";
+    await as(owner);
+    const id = (
+      await call<{ id: string }>(
+        "select id from public.portfolio_assets where path=$1",
+        [path],
+      )
+    )[0].id;
+    await expect(
+      call("select public.remove_portfolio($1)", [id]),
+    ).rejects.toThrow(/tối thiểu 3/);
+    await as(other);
+    await expect(
+      call("select public.remove_portfolio($1)", [id]),
+    ).rejects.toThrow(/Không có quyền/);
+    await db.exec("reset role");
+    await db.query("update public.providers set status='DRAFT' where id=$1", [
+      provider,
+    ]);
+    await as(owner);
+    // Object still referenced -> cannot be deleted directly.
+    await call("delete from storage.objects where name=$1", [path]);
+    expect(
+      await call("select * from storage.objects where name=$1", [path]),
+    ).toHaveLength(1);
+    expect(
+      (await call("select public.remove_portfolio($1) p", [id]))[0].p,
+    ).toBe(path);
+    await call("delete from storage.objects where name=$1", [path]);
+    expect(
+      await call("select * from storage.objects where name=$1", [path]),
+    ).toHaveLength(0);
   });
 });

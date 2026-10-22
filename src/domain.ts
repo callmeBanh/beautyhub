@@ -124,9 +124,9 @@ export type Provider = {
 };
 export type Settings = {
   ready: boolean;
-  bank_name: string;
-  bank_account: string;
-  bank_holder: string;
+  bank_name?: string;
+  bank_account?: string;
+  bank_holder?: string;
   support_url: string;
   cancellation_policy: string;
   policy_version: number;

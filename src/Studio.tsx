@@ -417,6 +417,36 @@ export function Studio() {
                     {a.caption}
                     <small>{a.approved ? "Đã duyệt" : "Chờ kiểm tra"}</small>
                   </figcaption>
+                  <button
+                    type="button"
+                    className="text-button danger"
+                    disabled={busy}
+                    aria-label={`Xóa ảnh: ${a.caption}`}
+                    onClick={() => {
+                      if (
+                        !confirm(
+                          `Xóa ảnh “${a.caption}”? Không thể khôi phục ảnh đã xóa.`,
+                        )
+                      )
+                        return;
+                      void run(async () => {
+                        const path = await rpc<string>("remove_portfolio", {
+                          p_id: a.id,
+                        });
+                        try {
+                          const { error: e } = await client()
+                            .storage.from("portfolio")
+                            .remove([path]);
+                          if (e) throw e;
+                        } catch (e) {
+                          await refresh();
+                          throw e;
+                        }
+                      }, "Đã xóa ảnh khỏi portfolio.");
+                    }}
+                  >
+                    Xóa ảnh
+                  </button>
                 </figure>
               ))}
             </div>

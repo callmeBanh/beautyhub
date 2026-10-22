@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import type { User } from "@supabase/supabase-js";
-import { db, listProviders } from "./api";
+import { db, listProviders, rpc } from "./api";
 import {
   errorText,
   type Profile,
@@ -44,12 +44,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setError("");
       const [ps, cfg] = await Promise.all([
         listProviders(),
-        db.from("settings").select("*").single(),
+        rpc<Settings[]>("public_settings"),
       ]);
       if (version !== generation.current) return;
-      if (cfg.error) throw cfg.error;
-      setProviders(ps);
-      setSettings(cfg.data);
+      if (!cfg[0]) throw new Error("Không tải được cấu hình công khai.");
+      let nextSettings = cfg[0];
+      let nextProfile: Profile | null = null;
       const {
         data: { user: current },
       } = await db.auth.getUser();
@@ -63,8 +63,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
           .single();
         if (version !== generation.current) return;
         if (e) throw e;
-        setProfile(data);
-      } else setProfile(null);
+        nextProfile = data;
+        if (nextProfile?.role === "ADMIN") {
+          const full = await db.from("settings").select("*").single();
+          if (version !== generation.current) return;
+          if (full.error) throw full.error;
+          nextSettings = full.data;
+        }
+      }
+      setProviders(ps);
+      setSettings(nextSettings);
+      setProfile(nextProfile);
     } catch (e) {
       if (version === generation.current) setError(errorText(e));
     } finally {
@@ -83,6 +92,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       generation.current++;
       setAuthLoading(true);
       setProfile(null);
+      setSettings(null);
       setProviders([]);
       setUser(u?.user || null);
       if (!u) setProfile(null);
