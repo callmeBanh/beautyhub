@@ -21,7 +21,7 @@ import {
   type Profile,
   type Support,
 } from "./domain";
-import { Alert, Badge, Empty, Field, Modal } from "./ui";
+import { Alert, Badge, Empty, Field, Loading, Modal } from "./ui";
 import { BookingCard } from "./Bookings";
 export function Admin() {
   const { providers, settings, refresh, toast } = useApp();
@@ -43,6 +43,7 @@ export function Admin() {
       { id: string; action: string; detail: string; created_at: string }[]
     >([]),
     [error, setError] = useState(""),
+    [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
     [resolve, setResolve] = useState<Support | null>(null);
   async function load() {
@@ -73,7 +74,9 @@ export function Admin() {
     setMetrics(await rpc("admin_metrics"));
   }
   useEffect(() => {
-    void load().catch((e) => setError(errorText(e)));
+    void load()
+      .catch((e) => setError(errorText(e)))
+      .finally(() => setLoading(false));
   }, []);
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -99,6 +102,23 @@ export function Admin() {
     ["audit", "Lịch sử thao tác", FileText],
     ["settings", "Cấu hình mở beta", Settings],
   ] as const;
+  if (loading) return <Loading />;
+  if (!metrics)
+    return (
+      <div className="page">
+        <h1>Vận hành</h1>
+        <Alert>{error || "Chưa tải được dữ liệu vận hành."}</Alert>
+        <button
+          className="btn"
+          onClick={() => {
+            setLoading(true);
+            void run(load).finally(() => setLoading(false));
+          }}
+        >
+          Thử lại
+        </button>
+      </div>
+    );
   const reviews = bookings.filter((b) => b.status === "PAYMENT_REVIEW");
   const overdue = bookings.filter(
     (b) =>

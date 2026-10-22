@@ -429,6 +429,14 @@ function Policies() {
         ghi chú booking. Bạn có thể yêu cầu chỉnh sửa hoặc xóa dữ liệu qua kênh
         hỗ trợ; dữ liệu giao dịch cần lưu giữ sẽ được giải thích khi xử lý.
       </p>
+      <p>
+        Đánh giá và tên hiển thị của người đánh giá được công khai trên hồ sơ
+        creator. Không ghi địa chỉ, số tài khoản hoặc thông tin riêng tư vào
+        đánh giá. Nháp booking được lưu trong phiên tab để khôi phục khi lỗi
+        mạng, và được xóa khi gửi thành công hoặc đăng xuất. Nếu trình duyệt
+        chặn lưu nháp, bạn vẫn có thể gửi yêu cầu nhưng cần nhập lại khi tải lại
+        trang.
+      </p>
       <h2>Liên hệ</h2>
       {settings?.support_url?.startsWith("https://") ? (
         <a
@@ -580,7 +588,7 @@ export default function App() {
             path="/checkout/:packageId"
             element={
               <RequireUser>
-                <Checkout />
+                <Checkout key={location.pathname + location.search} />
               </RequireUser>
             }
           />
@@ -596,7 +604,7 @@ export default function App() {
             path="/bookings/:id"
             element={
               <RequireUser>
-                <BookingDetail />
+                <BookingDetail key={location.pathname} />
               </RequireUser>
             }
           />

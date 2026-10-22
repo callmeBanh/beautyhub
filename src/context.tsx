@@ -80,6 +80,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = db.auth.onAuthStateChange((_event, u) => {
+      if (_event === "SIGNED_OUT") {
+        try {
+          Object.keys(sessionStorage)
+            .filter((key) => key.startsWith("bh-draft:"))
+            .forEach((key) => sessionStorage.removeItem(key));
+        } catch {
+          /* Storage may be blocked. */
+        }
+      }
       generation.current++;
       setAuthLoading(true);
       setProfile(null);

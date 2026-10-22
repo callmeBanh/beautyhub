@@ -5,10 +5,10 @@
   font-synthesis: none;
   font-weight: 400;
   --ink: #292622;
-  --muted: #7e766d;
+  --muted: #6b6259;
   --line: #e8e1d7;
   --cream: #f5f0e8;
-  --brand: #b95b43;
+  --brand: #a54b35;
   --green: #476c53;
 }
 * {
@@ -196,7 +196,7 @@ details p {
   border-radius: 4px;
   padding: 3px 5px;
   margin-left: 3px;
-  color: #8a7665;
+  color: #75614f;
 }
 .nav {
   display: flex;
@@ -599,7 +599,7 @@ details p {
   display: flex;
   gap: 3px;
   align-items: center;
-  color: #90714b;
+  color: #795c39;
 }
 .creator-card > p {
   font-size: 10px;
@@ -1312,7 +1312,7 @@ footer > small {
   padding: 7px 10px;
   border-radius: 30px;
   background: #f4eddc;
-  color: #8e6a2f;
+  color: #795725;
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -2570,5 +2570,37 @@ td {
     animation: none !important;
     transition: none !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Keep long customer input inside grid columns and touch controls readable. */
+.detail-layout > *,
+.checkout-layout > *,
+.workspace-main,
+.results {
+  min-width: 0;
+}
+.panel,
+.booking-card,
+.list-row {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+  .field > span,
+  .field small,
+  .checkbox,
+  .workspace-sidebar nav button {
+    font-size: 12px;
+  }
+  .icon-button,
+  .close,
+  .slot {
+    min-width: 44px;
+    min-height: 44px;
   }
 }

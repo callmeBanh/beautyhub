@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowUpRight,
@@ -132,6 +132,8 @@ export function Modal({
   children: ReactNode;
   onClose: () => void;
 }) {
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const old = document.body.style.overflow;
@@ -139,10 +141,10 @@ export function Modal({
     const el = document.getElementById("active-dialog");
     el?.focus();
     function key(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") closeRef.current();
       if (e.key === "Tab") {
         const focusable = el?.querySelectorAll<HTMLElement>(
-          "button,input,select,textarea,a[href]",
+          "button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href]",
         );
         if (!focusable?.length) return;
         const first = focusable[0],
@@ -153,7 +155,10 @@ export function Modal({
         ) {
           e.preventDefault();
           last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
+        } else if (
+          !e.shiftKey &&
+          (document.activeElement === last || document.activeElement === el)
+        ) {
           e.preventDefault();
           first.focus();
         }
