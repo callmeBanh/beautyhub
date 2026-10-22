@@ -13,6 +13,8 @@ npm ci
 npm run dev
 npm test
 npm run build
+npx playwright install chromium
+npm run test:e2e
 ```
 
 Mở http://127.0.0.1:4173. Tạo `.env` từ `.env.example`, điền URL Supabase HTTPS và publishable/anon key. Chỉ hai giá trị public này được đưa vào frontend. **Không dùng service-role/secret key hoặc mật khẩu database trong biến `VITE_*`.** Khởi động lại Vite sau khi đổi env.
@@ -20,7 +22,7 @@ Mở http://127.0.0.1:4173. Tạo `.env` từ `.env.example`, điền URL Supaba
 ## Thiết lập Supabase và Google
 
 1. Chủ dự án tạo Supabase Free project, chọn region phù hợp (ví dụ Singapore), bật bảo vệ tài khoản quản trị. Không cần nhập thông tin thẻ cho mã nguồn này.
-2. Trong SQL Editor của project **mới**, chạy lần lượt `supabase/migrations/202610050001_beta.sql`, `202610050002_operations.sql`. Không chạy migration khởi tạo lên database đang có dữ liệu cùng tên. Schema `private` không được thêm vào exposed API schemas.
+2. Trong SQL Editor của project **mới**, chạy lần lượt `supabase/migrations/202610050001_beta.sql`, `202610050002_operations.sql`, `202610220001_audit.sql`. Project đã có hai migration đầu chỉ áp dụng migration audit sau khi sao lưu và thử trên staging. Không chạy lại migration khởi tạo lên database đang có dữ liệu cùng tên. Schema `private` không được thêm vào exposed API schemas. Triển khai migration audit trước frontend mới vì frontend gọi `provider_reviews`.
 3. Chạy `supabase/enable-cron.sql` bằng SQL Editor để hết hạn giữ lịch và nhắc hẹn mỗi phút; kiểm tra trạng thái trong Integrations → Cron. Tác vụ cũng giữ lịch sử cron tối đa 7 ngày. Hàm nghiệp vụ đã được thử bằng PostgreSQL nhúng; scheduler Supabase cần kiểm tra trên project thật.
 4. Bật Google provider trong Supabase Auth. Chủ tài khoản cấu hình Google OAuth client, consent screen và callback `https://<project-ref>.supabase.co/auth/v1/callback`. Client secret chỉ nhập trong dashboard Supabase.
 5. Supabase Auth → URL Configuration: Site URL là URL production. Redirect allowlist gồm URL callback web thực tế (có query `next`): `http://127.0.0.1:4173/auth/callback**` cho local và `https://<site>.pages.dev/auth/callback**` cho production. Không allowlist wildcard mọi domain. Khi mở khách thật, Google consent screen phải cho phép khách ngoài danh sách test.
@@ -39,6 +41,8 @@ Chủ tài khoản tạo Pages project từ Git repository chứa mã nguồn n�
 
 `public/_redirects` hỗ trợ deep link SPA; `public/_headers` cung cấp CSP và security headers. CSP hiện cho phép Supabase hostname chuẩn `*.supabase.co`; nếu dùng custom domain, cập nhật CSP có chủ đích. Dùng URL `pages.dev` nếu không muốn mua domain. Không bật cache API hoặc service-worker cache thông tin riêng tư. Deploy frontend trước khi mở booking và nghiệm thu URL callback thật.
 
+Nếu dùng Vercel, `vercel.json` cũng khai báo security headers và SPA rewrite; `_headers` chỉ có tác dụng trên Cloudflare Pages. Font chỉ tải từ cùng website. Dev/build từ chối secret/service-role key trong `VITE_SUPABASE_ANON_KEY`; đây không thay thế việc kiểm tra toàn bộ biến `VITE_*` và artifact trước khi deploy. Nếu từng deploy nhầm secret, phải thu hồi/rotate trong Supabase và xóa artifact/cache đã lộ.
+
 ## Luồng giao dịch
 
 `REQUESTED → AWAITING_DEPOSIT → PAYMENT_REVIEW → CONFIRMED → COMPLETED → review`
@@ -48,6 +52,7 @@ Chủ tài khoản tạo Pages project từ Git repository chứa mã nguồn n�
 - Khách báo đã chuyển chỉ tạo `REPORTED`. Admin kiểm tra tiền thực nhận, nhập mã tham chiếu rồi mới xác nhận. Không có gateway/QR tự động, SMS/email trả phí hoặc webhook thanh toán giả.
 - Sau giờ kết thúc, creator mới được hoàn thành. Chỉ khách booking đó được review, một lần, bốn tiêu chí 1–5.
 - Chưa chuyển tiền: khách hủy trực tiếp. Đã báo chuyển/đã nhận tiền: ticket hỗ trợ; admin xử lý theo chính sách snapshot. Hoàn tiền được ghi `REFUND_PENDING` trước, chỉ ghi `REFUNDED` sau giao dịch hoàn thật.
+- Cọc đúng số tiền nhưng chuyển muộn vào booking `EXPIRED`/`CANCELLED`/`REJECTED`: admin kiểm tra tiền thực nhận, mở booking → **Đối soát cọc chuyển muộn để hoàn**. RPC ghi hàng chờ hoàn và audit, giữ nguyên trạng thái kết thúc, không chiếm lại lịch. Chỉ ghi nhận một lần. Tiền chuyển thiếu/thừa và đối soát một giao dịch được viện dẫn ở nhiều booking vẫn cần kiểm tra ngân hàng thủ công; app chưa có sổ giao dịch ngân hàng hoặc khóa duy nhất trên mã tham chiếu tự do.
 - Đổi lịch xử lý thủ công qua hỗ trợ: thống nhất hai bên, xử lý tiền booking cũ rồi đặt booking mới. Không có công cụ đổi giờ giữ nguyên cọc tự động.
 - App chỉ theo dõi **tiền cọc**, không phải kế toán, ví, escrow hay payout. Phần còn lại và việc chuyển tiền cọc cho creator phải có thỏa thuận/đối soát riêng; GMV không phải doanh thu nền tảng.
 
@@ -63,6 +68,8 @@ Chủ tài khoản tạo Pages project từ Git repository chứa mã nguồn n�
 ## Kiểm thử trước khi mời khách
 
 `npm test` chạy chính migration bằng PGlite (PostgreSQL nhúng), kiểm tra RLS, quyền actor, state machine, snapshot, idempotency, ràng buộc loại trừ lịch giao nhau, hoàn tiền, review, nhắc lịch và analytics. Mock chỉ phần schema auth/storage của Supabase; **không thay thế nghiệm thu Auth/PostgREST/Storage trên hosted Supabase, không phải load test nhiều kết nối**.
+
+`npm run test:e2e` chạy Chromium desktop 1440px và mobile 390px với HTTP Supabase được giả lập: khám phá → hồ sơ → booking, retry lỗi mạng cùng request key, creator nhận lịch, báo cọc, admin xác nhận, hoàn thành/review, hủy chưa cọc, hỗ trợ hủy/hoàn cọc và cọc chuyển muộn. Có kiểm tra axe cho các trang chính. Đây là test hợp đồng UI; không dùng chúng để xác nhận RLS, OAuth, ngân hàng hoặc production. Chi tiết và phần còn thiếu nằm trong [VERIFICATION.md](VERIFICATION.md). CI chạy test, build và E2E khi mở PR; không tự deploy hay migrate DB.
 
 - [ ] Google login/logout/callback/deep-link trên production, hai tài khoản khách và một creator/admin riêng.
 - [ ] Creator tạo và cập nhật hồ sơ, ảnh thật, package, mở/đóng lịch; quyền đọc ảnh người lạ và ảnh chưa duyệt đúng.
@@ -82,6 +89,7 @@ Chủ tài khoản tạo Pages project từ Git repository chứa mã nguồn n�
 - Admin metrics tổng hợp toàn bộ database; danh sách admin giới hạn 500 booking, 200 ticket, 500 users và 100 audit gần nhất. Tăng trưởng vượt beta cần pagination/monitoring/anti-abuse và load testing bổ sung.
 - Có khóa tại DB + exclusion constraint, không dựa vào đồng hồ hoặc localStorage phía khách để xác nhận giữ chỗ/thanh toán. Rate limit nghiệp vụ chưa thay thế WAF chống tấn công phân tán.
 - Portfolio được nén WebP trước upload, private bucket giới hạn 512 KB/ảnh và 12 ảnh/creator. Kiểm tra MIME/size không phải dịch vụ quét mã độc hoặc nhận diện ảnh tự động. Orphan upload cần người quản trị dọn, hiện chưa có nút xóa ảnh của creator.
+- Review công khai qua `provider_reviews` chỉ chứa nội dung hiển thị, không trả `author_id`/`booking_id`. Bảng review đầy đủ chỉ cho khách tác giả, admin hoặc bên liên quan theo policy. Nội dung review/tên hiển thị vẫn là công khai: không nhập địa chỉ hoặc thông tin ngân hàng vào review. Nháp booking lưu trong phiên tab để khôi phục lỗi mạng, được xóa khi gửi thành công hoặc đăng xuất; trình duyệt chặn lưu nháp vẫn gửi booking được.
 - SEO dùng URL riêng, title/description cơ bản; chưa prerender từng hồ sơ, chưa có sitemap production hay OpenGraph động. Không giả định SPA đã đạt SEO đầy đủ.
 - Prototype và ảnh demo giữ ở `legacy/`, không nằm trong bản deploy. `data/db.json` cũ không được dùng/import vào database mới. Không deploy `legacy/server.cjs`.
 

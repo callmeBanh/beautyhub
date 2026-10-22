@@ -1,8 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Provider } from "./domain";
+import { isPublicSupabaseKey } from "./domain";
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-export const configured = Boolean(url && key && /^https:\/\//.test(url));
+export const configured = Boolean(
+  url && key && /^https:\/\//.test(url) && isPublicSupabaseKey(key),
+);
 export const db = configured
   ? createClient(url, key, {
       auth: {
@@ -35,6 +38,16 @@ export async function listProviders(): Promise<Provider[]> {
     .order("created_at", { ascending: false });
   if (error) throw error;
   const providers = (data || []) as Provider[];
+  const publicReviews = await rpc<Provider["reviews"]>("provider_reviews");
+  providers.forEach((p) => {
+    // Private relation includes hidden reviews for authorized participants/admin.
+    const privateIds = new Set(p.reviews.map((r) => r.id));
+    p.reviews.push(
+      ...publicReviews.filter(
+        (r) => r.provider_id === p.id && !privateIds.has(r.id),
+      ),
+    );
+  });
   const stats =
     await rpc<{ provider_id: string; completed_count: number }[]>(
       "provider_stats",

@@ -277,6 +277,7 @@ export function Explore() {
   const { providers, loading } = useApp();
   const [params, setParams] = useSearchParams();
   const [available, setAvailable] = useState<Set<string> | null>(null),
+    [retry, setRetry] = useState(0),
     [checking, setChecking] = useState(false),
     [slotError, setSlotError] = useState("");
   const date = params.get("date") || "";
@@ -329,7 +330,7 @@ export function Explore() {
     return () => {
       live = false;
     };
-  }, [date, key, filters.budget, filters.service]);
+  }, [date, key, filters.budget, filters.service, retry]);
   let results = candidates.filter((p) => !date || available?.has(p.id));
   const sort = params.get("sort") || "recommended";
   if (sort === "price")
@@ -457,10 +458,17 @@ export function Explore() {
               <option value="rating">Đánh giá cao nhất</option>
             </select>
           </div>
-          {slotError && <Alert>{slotError}</Alert>}
+          {slotError && (
+            <Alert>
+              {slotError}{" "}
+              <button className="btn ghost" onClick={() => setRetry(retry + 1)}>
+                Thử lại
+              </button>
+            </Alert>
+          )}
           {loading || checking ? (
             <Loading />
-          ) : results.length ? (
+          ) : slotError ? null : results.length ? (
             <div className="creator-grid results-grid">
               {results.map((p) => (
                 <ProviderCard p={p} key={p.id} />
@@ -490,8 +498,9 @@ export function Explore() {
   );
 }
 function average(p: Provider) {
-  return p.reviews.length
-    ? p.reviews.reduce((s, r) => s + Number(r.rating), 0) / p.reviews.length
+  const reviews = p.reviews.filter((r) => !r.hidden);
+  return reviews.length
+    ? reviews.reduce((s, r) => s + Number(r.rating), 0) / reviews.length
     : 0;
 }
 export function Creator() {
@@ -499,6 +508,7 @@ export function Creator() {
   const { providers, loading, settings, toast } = useApp();
   const p = providers.find((p) => p.slug === slug && p.status === "APPROVED");
   const [selected, setSelected] = useState(""),
+    [retry, setRetry] = useState(0),
     [day, setDay] = useState(localDate(2)),
     [slots, setSlots] = useState<{ starts_at: string; ends_at: string }[]>([]),
     [busy, setBusy] = useState(false),
@@ -531,7 +541,7 @@ export function Creator() {
     return () => {
       live = false;
     };
-  }, [pkg?.id, day]);
+  }, [pkg?.id, day, retry]);
   if (loading) return <Loading />;
   if (!p)
     return (
@@ -679,10 +689,20 @@ export function Creator() {
                   onChange={(e) => setDay(e.target.value)}
                 />
               </Field>
-              {error && <Alert>{error}</Alert>}
+              {error && (
+                <Alert>
+                  {error}{" "}
+                  <button
+                    className="btn ghost"
+                    onClick={() => setRetry(retry + 1)}
+                  >
+                    Thử lại
+                  </button>
+                </Alert>
+              )}
               {busy ? (
                 <Loading />
-              ) : (
+              ) : error ? null : (
                 <div className="slots">
                   {slots.length ? (
                     slots.map((s) => (

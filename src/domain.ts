@@ -56,6 +56,7 @@ export const labels: Record<string, string> = {
   PAID: "Đã nhận cọc",
   REFUND_PENDING: "Chờ hoàn tiền",
   REFUNDED: "Đã hoàn tiền",
+  LATE_DEPOSIT: "Đã đối soát cọc chuyển muộn, chờ hoàn",
   DRAFT: "Bản nháp",
   PENDING: "Chờ duyệt",
   APPROVED: "Đã xác minh",
@@ -220,6 +221,18 @@ export function safeNext(value: string | null) {
     !value.includes("\\")
     ? value
     : "/bookings";
+}
+export function isPublicSupabaseKey(key: string) {
+  if (key.startsWith("sb_publishable_")) return true;
+  try {
+    const payload = key.split(".")[1];
+    return (
+      JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))).role ===
+      "anon"
+    );
+  } catch {
+    return false;
+  }
 }
 export function effectiveStatus(b: Booking, now = Date.now()): Status {
   return ["REQUESTED", "AWAITING_DEPOSIT"].includes(b.status) &&
