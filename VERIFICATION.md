@@ -1,6 +1,6 @@
-# Kiểm tra Web + PWA — 23/10/2026
+# Kiểm tra Web + PWA và chuẩn bị ra mắt — 23/10/2026
 
-Phạm vi: sản phẩm môn Trải nghiệm khởi nghiệp, web responsive và PWA dùng chung tài khoản/mã nguồn. Làm tại `D:\beautyHub\beautyhub`, branch `feat/web-pwa-completion`. Các chỉnh sửa cục bộ trước phiên làm việc được giữ tại commit `a4fd457`, sau đó tích hợp branch audit cũ. Không commit trực tiếp lên `main`.
+Mục tiêu mới: mở khách công khai và thu cọc thật. Sản phẩm vẫn là web responsive và PWA dùng chung tài khoản/mã nguồn; chưa đạt nghiệm thu production khi thiếu backend và kiểm chứng tiền thật. Điều kiện cụ thể tại [MARKET_LAUNCH.md](MARKET_LAUNCH.md). Làm tại `D:\beautyHub\beautyhub`, branch `feat/web-pwa-completion`. Các chỉnh sửa cục bộ trước phiên làm việc được giữ tại commit `a4fd457`, sau đó tích hợp branch audit cũ. Không commit trực tiếp lên `main`.
 
 ## Trạng thái backend
 
@@ -25,9 +25,9 @@ Không có dữ liệu mẫu hoặc nút đổi vai trò giả trong sản phẩ
 
 ## Kiểm thử
 
-- `npm test`: 39/39 đạt (4 domain, 35 PostgreSQL/RLS).
+- `npm test`: 48/48 đạt (4 domain, 41 PostgreSQL/RLS, 3 cấu hình ra mắt).
 - `npm run typecheck`: kiểm tra mã nguồn, database tests và cấu hình Playwright.
-- `npm run test:e2e`: 22/22 đạt trên Chromium, desktop 1440×1000 và mobile 390×844. Kết quả CI được theo dõi riêng trên PR.
+- `npm run test:e2e`: 30/30 đạt trên Chromium, desktop 1440×1000 và mobile 390×844. Kết quả CI được theo dõi riêng trên PR.
 - `npm run test:pwa`: 8/8 đạt trên production desktop/mobile. Bao gồm manifest/icon, axe ở trang cài và trang ngoại tuyến, cache không chứa dữ liệu riêng tư, offline/reconnect, yêu cầu cài chỉ sau thao tác người dùng và cập nhật chờ người dùng chọn. Browser install/update prompt dùng fixture sự kiện; worker/cache và offline được thử thực tế trong Chromium.
 - Build chạy tạo icon → TypeScript → Vite → service worker. Build có backend bật có thể báo kích thước chunk SDK lớn; admin/studio/booking đã tách tải theo route. Đây chưa phải đo Core Web Vitals hoặc kiểm thử mạng/thiết bị thật.
 
@@ -41,7 +41,21 @@ Test UI dùng HTTP fixture riêng, không thực thi RLS hoặc xác nhận ti�
 - Chưa thử cài PWA trên thiết bị iOS/Android thật; hỗ trợ và menu cài phụ thuộc trình duyệt. Không có bản App Store/Google Play.
 - PWA ngoại tuyến là màn hình hướng dẫn kết nối lại, không cung cấp lịch cá nhân hoặc giao dịch offline. Không có thông báo đẩy, email/SMS hoặc chat tự động.
 - DB chặn mã giao dịch trùng sau chuẩn hóa chữ hoa/thường và khoảng trắng đầu/cuối; người nhập hai chuỗi khác nhau cho cùng một giao dịch thực tế vẫn cần đối soát thủ công. Chưa có sổ ngân hàng/gateway/escrow/payout.
-- Danh sách creator vẫn tải tập trung; quy mô lớn cần phân trang/tìm kiếm phía server và load test. Kiểm tra axe trên fixture không phải chứng nhận đầy đủ về accessibility.
-- Khi có Supabase riêng, áp dụng đủ 5 migration theo thứ tự trong README/CLASSROOM_GUIDE, cấu hình Google và URL callback, xác minh admin, Storage và Cron. Không chạy bundle lên database chưa xác định trạng thái. Đặt `VITE_BACKEND_ENABLED=true` có chủ đích rồi kiểm tra lại toàn bộ luồng thật.
+- Catalog công khai, creator đã lưu và hồ sơ admin đã phân trang phía server, chỉ ký URL ảnh cho trang cần hiển thị. Chưa chạy load test trên hosted Supabase. Kiểm tra axe trên fixture không phải chứng nhận đầy đủ về accessibility.
+- Khi có Supabase riêng, áp dụng đủ 6 migration theo thứ tự trong README/CLASSROOM_GUIDE, cấu hình Google và URL callback, xác minh admin, Storage và Cron. Không chạy bundle lên database chưa xác định trạng thái. Đặt `VITE_BACKEND_ENABLED=true` có chủ đích rồi kiểm tra lại toàn bộ luồng thật.
 
-Hướng dẫn chạy, cài và trình bày: [CLASSROOM_GUIDE.md](CLASSROOM_GUIDE.md). Các checklist về dữ liệu/thanh toán thương mại trong README là tài liệu cho giai đoạn sau, không phải yêu cầu triển khai doanh nghiệp trong phạm vi môn học.
+Hướng dẫn chạy, cài và trình bày: [CLASSROOM_GUIDE.md](CLASSROOM_GUIDE.md). Vì mục tiêu đã đổi sang khách công khai/tiền thật, checklist tại MARKET_LAUNCH phải được thực hiện và lưu bằng chứng trước khi mở nhận booking. Bản môn học vẫn giữ backend tắt.
+
+## Đợt chuẩn bị ra mắt công khai
+
+- Thêm migration `202610230001_catalog.sql`; schema health mới `202610230001`. Catalog lọc và phân trang tại DB, kiểm tra lịch trong một RPC, không gửi fan-out theo từng gói từ trình duyệt. RPC public chỉ trả dữ liệu đã duyệt; card không trả toàn bộ đánh giá/owner_id, chỉ một ảnh và số tổng hợp. API detail theo slug/package riêng, không phụ thuộc hồ sơ có trong bốn creator ở trang chủ hay không.
+- Giữ quy trình creator/admin bằng dữ liệu private có RLS. Hồ sơ admin phân trang 25 dòng, giới hạn 20 đánh giá gần nhất/hồ sơ; danh sách yêu thích phân trang riêng theo đúng tài khoản. Rating/tổng review được tính trên mọi review công khai, không chỉ mẫu 20 review hiển thị.
+- Test SQL mới: 28 creator qua ba trang không trùng, điều kiện lọc kết hợp và ngày có/không còn slot, quyền saved khác tài khoản, deep link gói ẩn, projection không lộ author_id/booking_id, review ẩn không tham gia điểm/tổng; 21 review công khai nhưng payload detail tối đa 20.
+- Test web mới: 29 creator qua các trang, đổi lọc/sort về trang đầu, không gọi free_slots trên explore, deep link creator/package ngoài trang chủ, giữ bộ lọc và ẩn kết quả cũ khi lỗi rồi retry. Chạy desktop/mobile; fixture chỉ kiểm tra hợp đồng giao diện.
+- Thêm `check:release` và `build:public`; Vite chặn mode `public` nếu cấu hình thiếu. Thông tin vận hành/riêng tư/thời hạn lưu cấu hình công khai tại trang chính sách. Không coi việc nhập giá trị hoặc check PASS là xác minh quyền sở hữu hay khả năng hoạt động của dịch vụ.
+- `check:release` tại máy hiện trả lỗi như dự kiến vì backend tắt và thông tin ra mắt chưa được cung cấp. `check:backend` thoát trước network. Không thay đổi `.env` để tự bật project cũ; bản build bàn giao vẫn backend tắt.
+- Có một lần Vitest trong sandbox không đọc được file cache tạm của Vite; chạy lại ngoài sandbox đạt 48/48. Không sửa test để bỏ qua lỗi nghiệp vụ. Các thử nghiệm trình duyệt cũng chạy ngoài sandbox, chỉ gọi HTTP fixture ở máy.
+
+Chưa có chuyển khoản/hoàn tiền thật, Google OAuth hosted, scheduler/backup/restore, kiểm thử tải lớn, thiết bị iOS/Android thật hoặc deploy production. Không có gateway tự động hay thông báo email/SMS/push. Dữ liệu về thời hạn lưu do người vận hành cấu hình; chưa có tác vụ tự xóa toàn bộ tài khoản/giao dịch theo chính sách đó.
+
+Audit thư viện runtime ngày 23/10/2026: `npm audit --omit=dev --audit-level=moderate` báo 0 lỗ hổng đã biết. Kết quả này không thay thế kiểm toán mã hoặc đánh giá hosted production.

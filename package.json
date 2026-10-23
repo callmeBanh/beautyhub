@@ -10,10 +10,12 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "build": "node scripts/generate-icons.mjs && tsc --noEmit && vite build && node scripts/build-pwa.mjs",
+    "build:public": "npm run check:release && npm run build",
     "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
     "test:e2e": "playwright test",
     "test:pwa": "playwright test -c playwright.pwa.config.ts",
     "check:backend": "node scripts/check-backend.mjs",
+    "check:release": "node scripts/check-release.mjs",
     "db:bundle": "node scripts/bundle-database.mjs"
   },
   "engines": {

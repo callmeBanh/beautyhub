@@ -92,11 +92,15 @@ export function Field({
 }
 export function ProviderCard({ p }: { p: Provider }) {
   const reviews = p.reviews.filter((r) => !r.hidden);
-  const rating = reviews.length
-    ? (
-        reviews.reduce((a, r) => a + Number(r.rating), 0) / reviews.length
-      ).toFixed(1)
-    : null;
+  const count = p.review_count ?? reviews.length;
+  const rating =
+    p.rating_average !== undefined && count
+      ? Number(p.rating_average).toFixed(1)
+      : reviews.length
+        ? (
+            reviews.reduce((a, r) => a + Number(r.rating), 0) / reviews.length
+          ).toFixed(1)
+        : null;
   return (
     <article className="creator-card-shell">
       <Link className="creator-card" to={`/creators/${p.slug}`}>
@@ -126,7 +130,7 @@ export function ProviderCard({ p }: { p: Provider }) {
             {rating ? (
               <>
                 <Star size={12} />
-                {rating} ({reviews.length})
+                {rating} ({count})
               </>
             ) : (
               "Chưa có đánh giá"

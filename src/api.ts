@@ -34,45 +34,76 @@ export async function rpc<T = unknown>(
   if (error) throw error;
   return data as T;
 }
-export async function listProviders(): Promise<Provider[]> {
-  const { data, error } = await client()
-    .from("providers")
-    .select("*,packages(*),portfolio_assets(*),reviews(*)")
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  const providers = (data || []) as Provider[];
-  const publicReviews = await rpc<Provider["reviews"]>("provider_reviews");
-  providers.forEach((p) => {
-    // Private relation includes hidden reviews for authorized participants/admin.
-    const privateIds = new Set(p.reviews.map((r) => r.id));
-    p.reviews.push(
-      ...publicReviews.filter(
-        (r) => r.provider_id === p.id && !privateIds.has(r.id),
-      ),
-    );
-  });
-  const stats =
-    await rpc<{ provider_id: string; completed_count: number }[]>(
-      "provider_stats",
-    );
-  providers.forEach((p) => {
-    p.completed_count = Number(
-      stats.find((s) => s.provider_id === p.id)?.completed_count || 0,
-    );
-  });
+export async function signProviderAssets(providers: Provider[]) {
   const assets = providers.flatMap((p) => p.portfolio_assets);
   if (assets.length) {
-    const { data: urls } = await client()
+    const { data: urls, error } = await client()
       .storage.from("portfolio")
       .createSignedUrls(
         assets.map((a) => a.path),
         3600,
       );
+    if (error) throw error;
     assets.forEach((a) => {
       a.url = urls?.find((u) => u.path === a.path)?.signedUrl || undefined;
     });
   }
   return providers;
+}
+export type CatalogPage = {
+  items: Provider[];
+  total: number;
+  page: number;
+  size: number;
+};
+export async function catalog(
+  filters: Record<string, unknown> = {},
+  page = 1,
+  size = 12,
+  saved = false,
+): Promise<CatalogPage> {
+  if (!db) return { items: [], total: 0, page, size };
+  const result = await rpc<CatalogPage>("provider_catalog", {
+    p_filters: filters,
+    p_page: page,
+    p_size: size,
+    p_saved: saved,
+  });
+  await signProviderAssets(result.items);
+  return result;
+}
+export async function providerDetail(
+  slug?: string,
+  packageId?: string,
+): Promise<Provider | null> {
+  if (!db) return null;
+  const provider = await rpc<Provider | null>("provider_detail", {
+    p_slug: slug || null,
+    p_package: packageId || null,
+  });
+  if (provider) await signProviderAssets([provider]);
+  return provider;
+}
+export async function listProviders(ownerId?: string): Promise<Provider[]> {
+  const first = await catalog({}, 1, 4);
+  if (!ownerId) return first.items;
+  const { data, error } = await client()
+    .from("providers")
+    .select("*,packages(*),portfolio_assets(*),reviews(*)")
+    .eq("owner_id", ownerId)
+    .limit(1)
+    .limit(20, { referencedTable: "reviews" });
+  if (error) throw error;
+  const own = await signProviderAssets(
+    ((data || []) as Provider[]).map((provider) => ({
+      ...first.items.find((publicProvider) => publicProvider.id === provider.id),
+      ...provider,
+    })),
+  );
+  return [
+    ...first.items.filter((p) => !own.some((o) => o.id === p.id)),
+    ...own,
+  ];
 }
 export async function track(event: string) {
   if (!db) return;

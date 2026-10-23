@@ -16,7 +16,7 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
-import { client, rpc } from "./api";
+import { client, rpc, signProviderAssets } from "./api";
 import { useApp } from "./context";
 import {
   dateTime,
@@ -24,6 +24,7 @@ import {
   money,
   type Booking,
   type Profile,
+  type Provider,
   type Support,
 } from "./domain";
 import { Alert, Badge, Empty, Field, Loading, Modal } from "./ui";
@@ -36,19 +37,33 @@ type AdminList =
   | "overdue"
   | "tickets"
   | "users"
-  | "audit";
+  | "audit"
+  | "providers";
 type Audit = { id: string; action: string; detail: string; created_at: string };
 
 function listQuery(list: AdminList) {
   const table =
-    list === "tickets"
-      ? "support_requests"
-      : list === "users"
-        ? "profiles"
-        : list === "audit"
-          ? "audit_log"
-          : "bookings";
-  let query = client().from(table).select("*", { count: "exact" });
+    list === "providers"
+      ? "providers"
+      : list === "tickets"
+        ? "support_requests"
+        : list === "users"
+          ? "profiles"
+          : list === "audit"
+            ? "audit_log"
+            : "bookings";
+  let query = client()
+    .from(table)
+    .select(
+      list === "providers"
+        ? "*,packages(*),portfolio_assets(*),reviews(*)"
+        : "*",
+      { count: "exact" },
+    );
+  if (list === "providers")
+    query = query
+      .limit(20, { referencedTable: "reviews" })
+      .order("created_at", { referencedTable: "reviews", ascending: false });
   if (list === "reviews") query = query.eq("status", "PAYMENT_REVIEW");
   if (list === "refunds") query = query.eq("payment_status", "REFUND_PENDING");
   if (list === "overdue")
@@ -96,7 +111,14 @@ function useAdminPage<T>(list: AdminList) {
         setPosition({ list, page: lastPage });
         return;
       }
-      setData((result.data || []) as T[]);
+      const data =
+        list === "providers"
+          ? await signProviderAssets(
+              (result.data || []) as unknown as Provider[],
+            )
+          : result.data || [];
+      if (id !== request.current) return;
+      setData(data as T[]);
     } catch (e) {
       if (id === request.current) {
         setData([]);
@@ -217,7 +239,10 @@ function ProviderContact({ ownerId }: { ownerId: string }) {
 }
 
 export function Admin() {
-  const { providers, settings, refresh, toast } = useApp();
+  const { settings, refresh, toast } = useApp();
+  const providerPage = useAdminPage<Provider>("providers");
+  const providers = providerPage.data;
+  const [pendingProviders, setPendingProviders] = useState<number | null>(null);
   const bookingPage = useAdminPage<Booking>("bookings");
   const reviewPage = useAdminPage<Booking>("reviews");
   const refundPage = useAdminPage<Booking>("refunds");
@@ -248,7 +273,16 @@ export function Admin() {
     [resolve, setResolve] = useState<Support | null>(null);
   const loadMetrics = useCallback(async () => {
     try {
-      setMetrics(await rpc("admin_metrics"));
+      const [summary, pending] = await Promise.all([
+        rpc<NonNullable<typeof metrics>>("admin_metrics"),
+        client()
+          .from("providers")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "PENDING"),
+      ]);
+      if (pending.error) throw pending.error;
+      setMetrics(summary);
+      setPendingProviders(pending.count ?? 0);
     } catch (e) {
       setError(errorText(e));
     }
@@ -286,6 +320,7 @@ export function Admin() {
   }, [resolve]);
   async function load() {
     await Promise.all([
+      providerPage.load(),
       bookingPage.load(),
       reviewPage.load(),
       refundPage.load(),
@@ -393,10 +428,7 @@ export function Admin() {
                     ? "—"
                     : ticketPage.total,
                 ],
-                [
-                  "Hồ sơ chờ duyệt",
-                  providers.filter((p) => p.status === "PENDING").length,
-                ],
+                ["Hồ sơ chờ duyệt", pendingProviders ?? "—"],
                 [
                   "Cần hoàn tiền",
                   refundPage.loading || refundPage.error
@@ -490,7 +522,7 @@ export function Admin() {
           </>
         )}
         {tab === "providers" && (
-          <div>
+          <PageList state={providerPage} label="hồ sơ creator" busy={busy}>
             {providers.map((p) => (
               <section className="panel" key={p.id}>
                 <div className="section-title">
@@ -598,6 +630,9 @@ export function Admin() {
                     Lưu kết quả
                   </button>
                 </form>
+                <p className="muted">
+                  Tối đa 20 đánh giá mới nhất của hồ sơ trên trang này.
+                </p>
                 {p.reviews.map((r) => (
                   <div className="list-row" key={r.id}>
                     <p>
@@ -631,7 +666,7 @@ export function Admin() {
                 Creator cần đăng nhập và gửi hồ sơ trước.
               </Empty>
             )}
-          </div>
+          </PageList>
         )}
         {tab === "bookings" && (
           <>

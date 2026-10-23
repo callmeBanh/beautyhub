@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Link,
   useNavigate,
@@ -17,16 +17,15 @@ import {
   Sparkles,
   Star,
 } from "lucide-react";
-import { configured, rpc, track } from "./api";
+import { rpc, track } from "./api";
 import { useApp } from "./context";
+import { useCatalog, useProvider } from "./useCatalog";
 import { FavoriteButton } from "./FavoriteButton";
 import {
   DISTRICTS,
   STYLES,
   SERVICES,
-  filterProviders,
   localDate,
-  minPrice,
   money,
   timeOnly,
   type Provider,
@@ -275,12 +274,7 @@ export function Home() {
   );
 }
 export function Explore() {
-  const { providers, loading } = useApp();
   const [params, setParams] = useSearchParams();
-  const [available, setAvailable] = useState<Set<string> | null>(null),
-    [retry, setRetry] = useState(0),
-    [checking, setChecking] = useState(false),
-    [slotError, setSlotError] = useState("");
   const date = params.get("date") || "";
   const filters = {
     category: params.get("category") || "",
@@ -290,57 +284,26 @@ export function Explore() {
     budget: Number(params.get("budget") || 100000000),
     query: params.get("q") || "",
   };
-  const candidates = filterProviders(providers, filters);
-  const key = candidates.map((p) => p.id).join(",");
-  useEffect(() => {
-    let live = true;
-    setAvailable(null);
-    setSlotError("");
-    if (!date || !configured) {
-      setChecking(false);
-      return;
-    }
-    setChecking(true);
-    void Promise.all(
-      candidates.map(async (p) => {
-        const packages = p.packages.filter(
-          (k) =>
-            k.active &&
-            k.price <= filters.budget &&
-            (!filters.service || k.service === filters.service),
-        );
-        const results = await Promise.all(
-          packages.map((k) =>
-            rpc<unknown[]>("free_slots", { p_package: k.id, p_day: date }),
-          ),
-        );
-        return results.some((r) => r.length) ? p.id : null;
-      }),
-    )
-      .then((ids) => {
-        if (live)
-          setAvailable(new Set(ids.filter((v): v is string => Boolean(v))));
-      })
-      .catch(() => {
-        if (live)
-          setSlotError("Chưa kiểm tra được lịch trống. Vui lòng thử lại.");
-      })
-      .finally(() => {
-        if (live) setChecking(false);
-      });
-    return () => {
-      live = false;
-    };
-  }, [date, key, filters.budget, filters.service, retry]);
-  let results = candidates.filter((p) => !date || available?.has(p.id));
   const sort = params.get("sort") || "recommended";
-  if (sort === "price")
-    results = [...results].sort((a, b) => minPrice(a) - minPrice(b));
-  if (sort === "rating")
-    results = [...results].sort((a, b) => average(b) - average(a));
+  const pageValue = Number(params.get("page") || 1);
+  const page =
+    Number.isInteger(pageValue) && pageValue >= 1 && pageValue <= 10000
+      ? pageValue
+      : 1;
+  const result = useCatalog({ ...filters, date, sort }, page);
+  const { items: results, total, loading, error } = result;
+  const pages = Math.max(1, Math.ceil(total / 12));
+  useEffect(() => {
+    if (!loading && !error && page > pages) {
+      const next = new URLSearchParams(params);
+      next.set("page", String(pages));
+      setParams(next, { replace: true });
+    }
+  }, [loading, error, page, pages]);
   function set(name: string, value: string) {
     const n = new URLSearchParams(params);
     value ? n.set(name, value) : n.delete(name);
+    if (name !== "page") n.delete("page");
     setParams(n, { replace: true });
   }
   return (
@@ -368,6 +331,7 @@ export function Explore() {
           <Field label="Tên creator">
             <input
               value={filters.query}
+              maxLength={100}
               onChange={(e) => set("q", e.target.value)}
               placeholder="Bạn đang tìm ai?"
             />
@@ -444,11 +408,7 @@ export function Explore() {
         </aside>
         <section className="results">
           <div className="results-top">
-            <span>
-              {loading || checking
-                ? "Đang tìm…"
-                : `${results.length} creator phù hợp`}
-            </span>
+            <span>{loading ? "Đang tìm…" : `${total} creator phù hợp`}</span>
             <select
               aria-label="Sắp xếp"
               value={sort}
@@ -459,17 +419,17 @@ export function Explore() {
               <option value="rating">Đánh giá cao nhất</option>
             </select>
           </div>
-          {slotError && (
+          {error && (
             <Alert>
-              {slotError}{" "}
-              <button className="btn ghost" onClick={() => setRetry(retry + 1)}>
+              Không tải được danh sách: {error}{" "}
+              <button className="btn ghost" onClick={result.retry}>
                 Thử lại
               </button>
             </Alert>
           )}
-          {loading || checking ? (
+          {loading ? (
             <Loading />
-          ) : slotError ? null : results.length ? (
+          ) : error ? null : results.length ? (
             <div className="creator-grid results-grid">
               {results.map((p) => (
                 <ProviderCard p={p} key={p.id} />
@@ -478,13 +438,13 @@ export function Explore() {
           ) : (
             <Empty
               title={
-                providers.length
+                params.size
                   ? "Chưa có creator khớp lựa chọn"
                   : "Danh sách creator đang được chuẩn bị"
               }
             >
               <p>
-                {providers.length
+                {params.size
                   ? "Thử đổi ngày, khu vực hoặc tăng ngân sách để có thêm lựa chọn."
                   : "Hồ sơ chỉ được mở đặt lịch sau khi BeautyHub kiểm tra và xác minh."}
               </p>
@@ -493,21 +453,45 @@ export function Explore() {
               </button>
             </Empty>
           )}
+          {!loading && !error && total > 12 && (
+            <nav className="section-title" aria-label="Phân trang creator">
+              <button
+                className="btn ghost"
+                disabled={page <= 1}
+                onClick={() => set("page", String(page - 1))}
+              >
+                Trang trước
+              </button>
+              <span role="status" aria-live="polite">
+                Trang {page}/{pages}
+              </span>
+              <button
+                className="btn ghost"
+                disabled={page >= pages}
+                onClick={() => set("page", String(page + 1))}
+              >
+                Trang sau
+              </button>
+            </nav>
+          )}
         </section>
       </div>
     </div>
   );
 }
-function average(p: Provider) {
-  const reviews = p.reviews.filter((r) => !r.hidden);
-  return reviews.length
-    ? reviews.reduce((s, r) => s + Number(r.rating), 0) / reviews.length
-    : 0;
-}
 export function Creator() {
   const { slug } = useParams();
-  const { providers, loading, settings, toast } = useApp();
-  const p = providers.find((p) => p.slug === slug && p.status === "APPROVED");
+  const { settings, toast } = useApp();
+  const detail = useProvider(slug);
+  const { provider: p, loading } = detail;
+  useEffect(() => {
+    if (p) {
+      document.title = `${p.name} — ${p.category} | BeautyHub`;
+      document
+        .querySelector('meta[name="description"]')
+        ?.setAttribute("content", `${p.name}: ${p.bio}`.slice(0, 160));
+    }
+  }, [p]);
   const [selected, setSelected] = useState(""),
     [retry, setRetry] = useState(0),
     [day, setDay] = useState(localDate(2)),
@@ -544,6 +528,17 @@ export function Creator() {
     };
   }, [pkg?.id, day, retry]);
   if (loading) return <Loading />;
+  if (detail.error)
+    return (
+      <div className="page">
+        <Alert>
+          {detail.error}{" "}
+          <button className="btn ghost" onClick={detail.retry}>
+            Thử lại
+          </button>
+        </Alert>
+      </div>
+    );
   if (!p)
     return (
       <div className="page">
@@ -650,6 +645,12 @@ export function Creator() {
           </section>
           <section className="profile-section">
             <h2>Đánh giá từ khách hàng</h2>
+            {(p.review_count || 0) > 20 && (
+              <p className="muted">
+                Hiển thị 20 đánh giá mới nhất trong {p.review_count} đánh giá;
+                điểm trên thẻ được tính từ toàn bộ đánh giá công khai.
+              </p>
+            )}
             {p.reviews.filter((r) => !r.hidden).length ? (
               p.reviews
                 .filter((r) => !r.hidden)

@@ -69,6 +69,9 @@ beforeAll(async () => {
   await db.exec(
     readFileSync("supabase/migrations/202610220002_product.sql", "utf8"),
   );
+  await db.exec(
+    readFileSync("supabase/migrations/202610230001_catalog.sql", "utf8"),
+  );
   await db.query("insert into auth.users(id) values ($1),($2),($3),($4)", [
     customer,
     other,
@@ -118,6 +121,233 @@ describe("audit regressions (isolated transactions)", () => {
   afterEach(async () => {
     isolated = false;
     await db.exec("rollback; reset role");
+  });
+
+  it("public catalog combines filters on the same package and exposes only bounded public projections", async () => {
+    await as(null, "anon");
+    const filters = {
+      query: "Test",
+      category: "Photographer",
+      district: "Quận 1",
+      style: "Natural",
+      service: "Personal",
+      budget: 1200000,
+    };
+    const result = (
+      await call<{ result: any }>(
+        "select public.provider_catalog($1::jsonb,1,12) result",
+        [JSON.stringify(filters)],
+      )
+    )[0].result;
+    expect(result.total).toBe(1);
+    expect(result.items[0].id).toBe(provider);
+    expect(result.items[0].portfolio_assets.length).toBeLessThanOrEqual(1);
+    expect(result.items[0].reviews).toEqual([]);
+    expect(result.items[0]).not.toHaveProperty("owner_id");
+    expect(result.items[0]).not.toHaveProperty("phone");
+    for (const changed of [
+      { district: "Quận 7" },
+      { style: "Film" },
+      { category: "Makeup Artist" },
+      { budget: 100000 },
+      { service: "Party/Event" },
+      { query: "%" },
+    ]) {
+      expect(
+        (
+          await call<{ r: any }>(
+            "select public.provider_catalog($1::jsonb) r",
+            [JSON.stringify({ ...filters, ...changed })],
+          )
+        )[0].r.total,
+      ).toBe(0);
+    }
+    await expect(
+      call("select private.public_provider($1,true)", [provider]),
+    ).rejects.toThrow(/permission denied/);
+  });
+  it("catalog paginates globally with stable ordering beyond 24 creators", async () => {
+    await db.exec("reset role");
+    await db.exec(`insert into auth.users(id) select gen_random_uuid() from generate_series(1,28);
+      insert into public.providers(owner_id,slug,name,category,districts,styles,status)
+      select id,'catalog-'||row_number() over(order by id),'Catalog Creator','Photographer',array['Quận 1'],array['Natural'],'APPROVED'
+      from public.profiles where id not in ('${customer}','${other}','${owner}','${admin}');
+      insert into public.packages(provider_id,name,service,description,duration,price)
+      select id,'Catalog Package','Personal','Valid package for catalog',60,500000 from public.providers where slug like 'catalog-%';`);
+    await as(null, "anon");
+    const first = (
+      await call<{ r: any }>(
+        `select public.provider_catalog('{"query":"Catalog"}',1,12) r`,
+      )
+    )[0].r;
+    const second = (
+      await call<{ r: any }>(
+        `select public.provider_catalog('{"query":"Catalog"}',2,12) r`,
+      )
+    )[0].r;
+    const third = (
+      await call<{ r: any }>(
+        `select public.provider_catalog('{"query":"Catalog"}',3,12) r`,
+      )
+    )[0].r;
+    expect(first.total).toBe(28);
+    expect(first.items).toHaveLength(12);
+    expect(second.items).toHaveLength(12);
+    expect(third.items).toHaveLength(4);
+    expect(
+      new Set(
+        [...first.items, ...second.items, ...third.items].map((p: any) => p.id),
+      ).size,
+    ).toBe(28);
+    expect(
+      (
+        await call<{ r: any }>(
+          `select public.provider_catalog('{"query":"Catalog"}',1,12) r`,
+        )
+      )[0].r.items,
+    ).toEqual(first.items);
+    await expect(
+      call("select public.provider_catalog('{}',1,25)"),
+    ).rejects.toThrow(/không hợp lệ/);
+    await expect(
+      call("select public.provider_catalog('{}',0,12)"),
+    ).rejects.toThrow(/không hợp lệ/);
+    await expect(
+      call(`select public.provider_catalog('{"budget":-1}')`),
+    ).rejects.toThrow(/không hợp lệ/);
+  });
+  it("public detail resolves deep links independently and hides suspended or inactive content", async () => {
+    await as(null, "anon");
+    const byPackage = (
+      await call<{ r: any }>("select public.provider_detail(null,$1) r", [pkg])
+    )[0].r;
+    expect(byPackage.id).toBe(provider);
+    expect(byPackage).not.toHaveProperty("owner_id");
+    expect(byPackage.portfolio_assets.length).toBeLessThanOrEqual(12);
+    const bySlug = (
+      await call<{ r: any }>("select public.provider_detail('test-studio') r")
+    )[0].r;
+    expect(bySlug.id).toBe(provider);
+    await expect(
+      call("select public.provider_detail(null,null)"),
+    ).rejects.toThrow(/Chọn một/);
+    await db.exec("reset role");
+    await db.query("update public.packages set active=false where id=$1", [
+      pkg,
+    ]);
+    await as(null, "anon");
+    expect(
+      (
+        await call<{ r: any }>("select public.provider_detail(null,$1) r", [
+          pkg,
+        ])
+      )[0].r,
+    ).toBeNull();
+    await db.exec("reset role");
+    await db.query(
+      "update public.providers set status='SUSPENDED' where id=$1",
+      [provider],
+    );
+    await as(owner);
+    expect(
+      (
+        await call<{ r: any }>("select public.provider_detail('test-studio') r")
+      )[0].r,
+    ).toBeNull();
+    expect(
+      (await call<{ r: any }>("select public.provider_catalog() r"))[0].r.total,
+    ).toBe(0);
+    expect(
+      await call("select id from public.providers where owner_id=auth.uid()"),
+    ).toHaveLength(1);
+  });
+  it("catalog ratings use every visible review while profile payloads stay bounded and private", async () => {
+    await db.exec("reset role");
+    await db.query(
+      `with inserted as (
+      insert into public.bookings(customer_id,provider_id,package_id,request_key,snapshot,customer_name,phone,district,address,starts_at,ends_at,price,deposit,status)
+      select $1,$2,$3,gen_random_uuid(),'{}','Private customer','0901234567','Quận 1','Private address',now()-interval '30 days',now()-interval '29 days',1200000,360000,'COMPLETED' from generate_series(1,22) returning id
+    ) insert into public.reviews(booking_id,provider_id,author_id,author_name,quality,communication,punctuality,accuracy,text,hidden)
+    select id,$2,$1,'Public reviewer',5,5,5,5,'A visible public review',false from inserted`,
+      [customer, provider, pkg],
+    );
+    await db.query(
+      "update public.reviews set hidden=true,text='INTERNAL HIDDEN REVIEW' where id=(select id from public.reviews where provider_id=$1 order by id limit 1)",
+      [provider],
+    );
+    await as(null, "anon");
+    const card = (
+      await call<{ r: any }>("select public.provider_catalog() r")
+    )[0].r.items[0];
+    expect(card.review_count).toBe(21);
+    expect(card.rating_average).toBe(5);
+    expect(card.completed_count).toBe(22);
+    expect(card.reviews).toHaveLength(0);
+    const detail = (
+      await call<{ r: any }>("select public.provider_detail('test-studio') r")
+    )[0].r;
+    expect(detail.reviews).toHaveLength(20);
+    expect(detail.review_count).toBe(21);
+    for (const review of detail.reviews) {
+      expect(review).not.toHaveProperty("author_id");
+      expect(review).not.toHaveProperty("booking_id");
+    }
+    expect(JSON.stringify(detail)).not.toMatch(
+      /Private address|Private customer|INTERNAL HIDDEN/,
+    );
+  });
+
+  it("saved catalog never accepts another customer's identity", async () => {
+    await as(customer);
+    await call("select public.set_favorite($1,true)", [provider]);
+    expect(
+      (
+        await call<{ r: any }>(
+          "select public.provider_catalog('{}',1,12,true) r",
+        )
+      )[0].r.total,
+    ).toBe(1);
+    await as(other);
+    expect(
+      (
+        await call<{ r: any }>(
+          "select public.provider_catalog('{}',1,12,true) r",
+        )
+      )[0].r.total,
+    ).toBe(0);
+    await as(null, "anon");
+    await expect(
+      call("select public.provider_catalog('{}',1,12,true)"),
+    ).rejects.toThrow(/đăng nhập/);
+  });
+  it("date search uses actual available slots without leaking a booking", async () => {
+    await db.exec("reset role");
+    await db.query(
+      "update public.availability set ends_at=$1 where provider_id=$2",
+      [`${day}T11:00:00+07:00`, provider],
+    );
+    await as(null, "anon");
+    const filters = JSON.stringify({ date: day });
+    expect(
+      (
+        await call<{ r: any }>("select public.provider_catalog($1::jsonb) r", [
+          filters,
+        ])
+      )[0].r.total,
+    ).toBe(1);
+    await as(customer);
+    await create();
+    await as(null, "anon");
+    const full = (
+      await call<{ r: any }>("select public.provider_catalog($1::jsonb) r", [
+        filters,
+      ])
+    )[0].r;
+    expect(full.total).toBe(0);
+    expect(full.items).toEqual([]);
+    await expect(
+      call(`select public.provider_catalog('{"date":"2000-01-01"}')`),
+    ).rejects.toThrow(/ngoài thời gian/);
   });
 
   it("saved creators are private, idempotent and only approved creators can be saved", async () => {

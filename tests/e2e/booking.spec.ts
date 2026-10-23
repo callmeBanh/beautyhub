@@ -55,6 +55,8 @@ async function setup(context: BrowserContext) {
   let tickets: any[] = [];
   let failCreate = false;
   let failSlots = false;
+  let catalogProviders = [stateProvider];
+  let failCatalog = false;
   const favorites = new Set<string>();
   const keys: string[] = [];
   await context.addInitScript(
@@ -178,6 +180,57 @@ async function setup(context: BrowserContext) {
             : favorites.delete(body.p_provider);
           data = null;
           break;
+        case "provider_catalog": {
+          if (failCatalog) {
+            status = 503;
+            data = { message: "Network catalog unavailable" };
+            break;
+          }
+          const f = body.p_filters || {};
+          let candidates = catalogProviders.filter(
+            (p) =>
+              p.status === "APPROVED" &&
+              (!f.query ||
+                p.name.toLowerCase().includes(f.query.toLowerCase())) &&
+              (!f.category || p.category === f.category) &&
+              (!f.district || p.districts.includes(f.district)) &&
+              (!f.style || p.styles.includes(f.style)) &&
+              (!body.p_saved || favorites.has(p.id)) &&
+              p.packages.some(
+                (k) =>
+                  k.active &&
+                  (!f.service || k.service === f.service) &&
+                  k.price <= (f.budget ?? 100000000),
+              ),
+          );
+          if (f.sort === "price")
+            candidates = [...candidates].sort(
+              (a, b) => a.packages[0].price - b.packages[0].price,
+            );
+          const page = body.p_page || 1,
+            size = body.p_size || 12;
+          data = {
+            total: candidates.length,
+            page,
+            size,
+            items: candidates
+              .slice((page - 1) * size, page * size)
+              .map((p) => ({ ...p, reviews, review_count: reviews.length })),
+          };
+          break;
+        }
+        case "provider_detail": {
+          const found = catalogProviders.find((p) =>
+            body.p_slug
+              ? p.slug === body.p_slug
+              : p.packages.some((k) => k.id === body.p_package && k.active),
+          );
+          data =
+            found?.status === "APPROVED"
+              ? { ...found, reviews, review_count: reviews.length }
+              : null;
+          break;
+        }
         case "provider_stats":
           data = [];
           break;
@@ -312,7 +365,15 @@ async function setup(context: BrowserContext) {
     } else {
       switch (name) {
         case "providers":
-          data = [stateProvider];
+          data = url.searchParams.has("owner_id")
+            ? actor === owner
+              ? [stateProvider]
+              : []
+            : catalogProviders;
+          if (url.searchParams.get("status")?.startsWith("eq."))
+            data = data.filter(
+              (p: any) => p.status === url.searchParams.get("status")?.slice(3),
+            );
           break;
         case "availability":
           data = hours;
@@ -392,6 +453,25 @@ async function setup(context: BrowserContext) {
   return {
     role(id: string) {
       actor = id;
+    },
+    seedCatalog(count: number) {
+      catalogProviders = Array.from({ length: count }, (_, i) => ({
+        ...structuredClone(stateProvider),
+        id: `provider-${i + 1}`,
+        slug: `studio-${i + 1}`,
+        name: `Studio ${i + 1}`,
+        packages: [
+          {
+            ...pkg,
+            id: `package-${i + 1}`,
+            provider_id: `provider-${i + 1}`,
+            price: 100000 + i * 10000,
+          },
+        ],
+      }));
+    },
+    failCatalog(value: boolean) {
+      failCatalog = value;
     },
     failCreate() {
       failCreate = true;
@@ -831,4 +911,111 @@ test("accessibility of discovery, creator, booking and admin", async ({
     path: testInfo.outputPath("admin.png"),
     fullPage: true,
   });
+});
+
+test("catalog paginates and filters on the server without slot fan-out", async ({
+  page,
+  context,
+}) => {
+  const api = await setup(context);
+  api.seedCatalog(29);
+  const calls: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/rpc/")) calls.push(request.url());
+  });
+  await page.goto("/explore?district=Quận+1");
+  await expect(page.locator(".results .creator-card")).toHaveCount(12);
+  await expect(page.locator(".results-top")).toContainText(
+    "29 creator phù hợp",
+  );
+  await page.getByRole("button", { name: "Trang sau", exact: true }).click();
+  await expect(page).toHaveURL(/page=2/);
+  await expect(
+    page.getByRole("status").filter({ hasText: "Trang 2/3" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Studio 13", exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Sắp xếp").selectOption("price");
+  await expect(page).not.toHaveURL(/page=2/);
+  await expect(
+    page.getByRole("heading", { name: "Studio 1", exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Tên creator").fill("Studio 29");
+  await expect(page.locator(".results .creator-card")).toHaveCount(1);
+  await expect(
+    page.getByRole("heading", { name: "Studio 29", exact: true }),
+  ).toBeVisible();
+  expect(calls.some((url) => url.includes("/free_slots"))).toBe(false);
+});
+
+test("creator and checkout deep links work beyond the homepage selection", async ({
+  page,
+  context,
+}) => {
+  const api = await setup(context);
+  api.seedCatalog(29);
+  await page.goto("/creators/studio-29");
+  await expect(
+    page.getByRole("heading", { name: "Studio 29", exact: true }),
+  ).toBeVisible();
+  await expect(page).toHaveTitle(/Studio 29/);
+  await page.locator(".slot").first().click();
+  await expect(page).toHaveURL(/checkout\/package-29/);
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Gửi yêu cầu đặt lịch." }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Khu vực")).toHaveValue("Quận 1");
+});
+
+test("catalog errors retain filters, allow retry, and hide stale results", async ({
+  page,
+  context,
+}) => {
+  const api = await setup(context);
+  await page.goto("/explore?style=Natural");
+  await expect(page.locator(".results .creator-card")).toHaveCount(1);
+  api.failCatalog(true);
+  await page.getByLabel("Tên creator").fill("Test");
+  await expect(page.locator(".results").getByRole("alert")).toContainText(
+    "Không tải được danh sách",
+  );
+  await expect(page.locator(".results .creator-card")).toHaveCount(0);
+  api.failCatalog(false);
+  await page
+    .locator(".results")
+    .getByRole("button", { name: "Thử lại" })
+    .click();
+  await expect(page.locator(".results .creator-card")).toHaveCount(1);
+  await expect(page.getByLabel("Tên creator")).toHaveValue("Test");
+  await expect(page.getByLabel("Phong cách")).toHaveValue("Natural");
+});
+
+test("admin can review a creator outside the first 25 profiles", async ({
+  page,
+  context,
+}) => {
+  const api = await setup(context);
+  api.seedCatalog(29);
+  api.role(admin);
+  await page.goto("/admin");
+  await page
+    .getByRole("button", { name: "Xác minh creator", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Studio 25", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Studio 26", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Trang sau: hồ sơ creator", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Studio 29", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Studio 1", exact: true }),
+  ).toHaveCount(0);
 });

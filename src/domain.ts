@@ -109,6 +109,8 @@ export type Review = {
   created_at: string;
 };
 export type Provider = {
+  rating_average?: number;
+  review_count?: number;
   completed_count?: number;
   id: string;
   owner_id: string;
@@ -223,18 +225,7 @@ export function safeNext(value: string | null) {
     ? value
     : "/bookings";
 }
-export function isPublicSupabaseKey(key: string) {
-  if (key.startsWith("sb_publishable_")) return true;
-  try {
-    const payload = key.split(".")[1];
-    return (
-      JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))).role ===
-      "anon"
-    );
-  } catch {
-    return false;
-  }
-}
+export { isPublicKey as isPublicSupabaseKey } from "../scripts/public-key.mjs";
 export function effectiveStatus(b: Booking, now = Date.now()): Status {
   return ["REQUESTED", "AWAITING_DEPOSIT"].includes(b.status) &&
     b.hold_until &&

@@ -45,8 +45,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const version = ++generation.current;
     try {
       setError("");
-      const [ps, cfg] = await Promise.all([
-        listProviders(),
+      const [session, cfg] = await Promise.all([
+        db.auth.getUser(),
         rpc<Settings[]>("public_settings"),
       ]);
       if (version !== generation.current) return;
@@ -54,9 +54,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let nextSettings = cfg[0];
       let nextProfile: Profile | null = null;
       let nextFavorites = new Set<string>();
-      const {
-        data: { user: current },
-      } = await db.auth.getUser();
+      const current = session.data.user;
+      const ps = await listProviders(current?.id);
       if (version !== generation.current) return;
       setUser(current);
       if (current) {

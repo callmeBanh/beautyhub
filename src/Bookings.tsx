@@ -17,6 +17,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { client, rpc, track } from "./api";
+import { useProvider } from "./useCatalog";
 import { useApp } from "./context";
 import {
   dateTime,
@@ -52,11 +53,10 @@ export function Checkout() {
   const { packageId } = useParams();
   const [params] = useSearchParams();
   const start = params.get("start") || "";
-  const { providers, profile, user, settings, loading } = useApp();
+  const { profile, user, settings } = useApp();
+  const detail = useProvider(undefined, packageId);
+  const { provider, loading } = detail;
   const navigate = useNavigate();
-  const provider = providers.find((p) =>
-    p.packages.some((k) => k.id === packageId),
-  );
   const pkg = provider?.packages.find((k) => k.id === packageId && k.active);
   const storageKey = `bh-draft:${user!.id}:${packageId}:${start}`;
   const [requestKey] = useState(() => {
@@ -87,6 +87,14 @@ export function Checkout() {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   useEffect(() => {
+    if (provider)
+      setDraft((previous) =>
+        previous.district
+          ? previous
+          : { ...previous, district: provider.districts[0] || "" },
+      );
+  }, [provider?.id]);
+  useEffect(() => {
     try {
       sessionStorage.setItem(storageKey, JSON.stringify(draft));
     } catch {
@@ -94,6 +102,17 @@ export function Checkout() {
     }
   }, [draft, storageKey]);
   if (loading) return <Loading />;
+  if (detail.error)
+    return (
+      <div className="page">
+        <Alert>
+          {detail.error}{" "}
+          <button className="btn ghost" onClick={detail.retry}>
+            Thử lại
+          </button>
+        </Alert>
+      </div>
+    );
   if (!provider || !pkg || !start || !Number.isFinite(Date.parse(start)))
     return (
       <div className="page">

@@ -1,6 +1,6 @@
 # BeautyHub — hướng dẫn trải nghiệm môn học
 
-Đây là sản phẩm web + PWA cho môn Trải nghiệm khởi nghiệp. PWA dùng chung mã nguồn và tài khoản với web; không phải ứng dụng phát hành qua App Store/Google Play.
+Đây là hướng dẫn bản web + PWA dùng cho môn Trải nghiệm khởi nghiệp. Mục tiêu mới là mở khách công khai và thu cọc thật; xem MARKET_LAUNCH.md cho các điều kiện còn thiếu trước khi thực hiện. PWA dùng chung mã nguồn và tài khoản với web; không phải ứng dụng phát hành qua App Store/Google Play.
 
 ## Chạy ngay khi chưa có backend
 
@@ -60,7 +60,7 @@ Giữ bước này cho sau theo yêu cầu hiện tại. Mã nguồn đã có `n
 - `supabase/generated/upgrade-from-original.sql`: chỉ cho database đã có đúng hai migration gốc và chưa hardening; từ chối chạy lại nếu đã có cột `payment_reference`.
 - Project đã có một phần migration khác: kiểm tra lịch sử và chạy từng migration còn thiếu. Không chạy bundle một cách suy đoán.
 
-Thứ tự đầy đủ: `202610050001_beta.sql` → `202610050002_operations.sql` → `202610210001_hardening.sql` → `202610220001_audit.sql` → `202610220002_product.sql`.
+Thứ tự đầy đủ: `202610050001_beta.sql` → `202610050002_operations.sql` → `202610210001_hardening.sql` → `202610220001_audit.sql` → `202610220002_product.sql` → `202610230001_catalog.sql`.
 
 Sau khi có project do nhóm sở hữu, cấu hình Google Auth/redirect, admin bằng UUID đã xác minh, Storage/Cron và các điều kiện nhận booking. Đặt URL và anon/publishable key của project đó rồi đổi `VITE_BACKEND_ENABLED=true`. Chỉ dùng `npm run check:backend` sau khi bật lại kết nối có chủ đích. Tuyệt đối không đặt service-role/secret vào biến `VITE_*`.
 

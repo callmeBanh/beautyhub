@@ -44,6 +44,7 @@ import { InstallPage, UpdateNotice } from "./pwa";
 import { Saved } from "./Saved";
 import { MobileNav } from "./MobileNav";
 import { Notifications, useUnreadNotifications } from "./Notifications";
+import { site } from "./site";
 
 function Header() {
   const { user, profile, toast } = useApp();
@@ -346,10 +347,21 @@ function Account() {
 }
 function Policies() {
   const { settings } = useApp();
+  const support = settings?.support_url?.startsWith("https://")
+    ? settings.support_url
+    : site.support;
   return (
     <div className="page narrow prose">
       <span className="eyebrow">MINH BẠCH TỪ ĐẦU</span>
       <h1>Chính sách & hỗ trợ</h1>
+      {site.operator && (
+        <p>
+          Đơn vị / người vận hành: <strong>{site.operator}</strong>
+        </p>
+      )}
+      {site.policyDate && (
+        <p className="muted">Cập nhật chính sách: {site.policyDate}</p>
+      )}
       <h2>Đặt lịch và tiền cọc</h2>
       <p>
         Yêu cầu đặt lịch được giữ tối đa 12 giờ để creator phản hồi. Sau khi
@@ -387,7 +399,8 @@ function Policies() {
         BeautyHub sử dụng tên, số điện thoại, địa điểm và thông tin booking để
         thực hiện dịch vụ. Khách, creator liên quan và người vận hành có quyền
         xem dữ liệu cần thiết cho giao dịch. Dữ liệu tài khoản được xử lý qua
-        Supabase; website được triển khai trên Cloudflare khi mở beta.
+        Supabase khi backend được kết nối; nhà cung cấp hosting tùy môi trường
+        triển khai.
       </p>
       <p>
         Không nhập thông tin thẻ, mật khẩu ngân hàng hoặc giấy tờ tùy thân vào
@@ -402,14 +415,24 @@ function Policies() {
         chặn lưu nháp, bạn vẫn có thể gửi yêu cầu nhưng cần nhập lại khi tải lại
         trang.
       </p>
+      {site.retention && (
+        <>
+          <h2>Thời gian lưu dữ liệu</h2>
+          <p className="preserve">{site.retention}</p>
+        </>
+      )}
+      {site.privacy && (
+        <p>
+          <a href={site.privacy} target="_blank" rel="noreferrer">
+            Gửi yêu cầu về dữ liệu cá nhân
+          </a>
+          . Người vận hành sẽ xác minh chủ tài khoản trước khi cung cấp hoặc xử
+          lý dữ liệu.
+        </p>
+      )}
       <h2>Liên hệ</h2>
-      {settings?.support_url?.startsWith("https://") ? (
-        <a
-          className="btn"
-          href={settings.support_url}
-          target="_blank"
-          rel="noreferrer"
-        >
+      {support ? (
+        <a className="btn" href={support} target="_blank" rel="noreferrer">
           Mở kênh hỗ trợ <ArrowRight size={16} />
         </a>
       ) : (

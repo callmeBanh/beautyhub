@@ -1,11 +1,22 @@
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useCatalog } from "./useCatalog";
 import { useApp } from "./context";
 import { Alert, Empty, Loading, ProviderCard } from "./ui";
 export function Saved() {
-  const { providers, favorites, loading, error, refresh } = useApp();
-  const saved = providers.filter(
-    (p) => p.status === "APPROVED" && favorites.has(p.id),
+  const { favorites, user } = useApp();
+  const [page, setPage] = useState(1);
+  const result = useCatalog(
+    {},
+    page,
+    true,
+    `${user?.id}:${[...favorites].sort().join(",")}`,
   );
+  const { items: saved, loading, error, total } = result;
+  const pages = Math.max(1, Math.ceil(total / 12));
+  useEffect(() => {
+    if (!loading && !error && page > pages) setPage(pages);
+  }, [loading, error, page, pages]);
   return (
     <div className="page">
       <span className="eyebrow">DÀNH RIÊNG CHO BẠN</span>
@@ -19,7 +30,7 @@ export function Saved() {
       ) : error ? (
         <Alert>
           {error}{" "}
-          <button className="btn ghost" onClick={() => void refresh()}>
+          <button className="btn ghost" onClick={result.retry}>
             Thử lại
           </button>
         </Alert>
@@ -39,7 +50,28 @@ export function Saved() {
           </Link>
         </Empty>
       )}
-      {favorites.size > saved.length && (
+      {!loading && !error && total > 12 && (
+        <nav className="section-title" aria-label="Phân trang creator đã lưu">
+          <button
+            className="btn ghost"
+            disabled={page <= 1}
+            onClick={() => setPage(page - 1)}
+          >
+            Trang trước
+          </button>
+          <span role="status">
+            Trang {page}/{pages}
+          </span>
+          <button
+            className="btn ghost"
+            disabled={page >= pages}
+            onClick={() => setPage(page + 1)}
+          >
+            Trang sau
+          </button>
+        </nav>
+      )}
+      {!loading && !error && favorites.size > total && (
         <p className="muted">
           Một số creator đã lưu đang tạm ẩn hoặc chưa nhận lịch.
         </p>
