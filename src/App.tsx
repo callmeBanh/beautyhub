@@ -36,8 +36,9 @@ function Header() {
   useEffect(() => setMenu(false), [location]);
   return (
     <header className="header">
-      <Link className="brand" to="/">
-        <span>B</span>beautyhub<span className="beta">BETA</span>
+      <Link className="brand" to="/" aria-label="BeautyHub trang chủ">
+        <img src="/assets/brand-mark.png" alt="" className="brand-icon" width="32" height="32" />
+        beautyhub<span className="beta">BETA</span>
       </Link>
       <nav className={menu ? "nav open" : "nav"}>
         <NavLink to="/explore">Khám phá creator</NavLink>
@@ -91,17 +92,24 @@ function Footer() {
   return (
     <footer>
       <div>
-        <Link className="brand" to="/">
-          <span>B</span>beautyhub
+        <Link className="brand" to="/" aria-label="BeautyHub trang chủ">
+          <img src="/assets/brand-mark.png" alt="" className="brand-icon" width="32" height="32" />
+          beautyhub
         </Link>
-        <p>Đúng người cho khoảnh khắc của bạn.</p>
+        <p>Nền tảng kết nối và đặt lịch Photographer & Makeup Artist tại TP.HCM.</p>
+        <small className="footer-legal">
+          © 2026 BeautyHub Vietnam · Bảo vệ dữ liệu theo Nghị định 13/2023/NĐ-CP.
+        </small>
       </div>
       <div>
         <Link to="/how-it-works">Cách đặt lịch</Link>
         <Link to="/policies">Chính sách & quyền riêng tư</Link>
         <Link to="/studio">Dành cho creator</Link>
+        <a href="https://zalo.me/beautyhub" target="_blank" rel="noreferrer">
+          Hỗ trợ trực tuyến (Zalo)
+        </a>
       </div>
-      <small>TP.HCM · Private beta</small>
+      <small>TP.HCM · Version 1.0 Production</small>
     </footer>
   );
 }
@@ -137,7 +145,9 @@ function Login() {
   const [params] = useSearchParams();
   const next = safeNext(params.get("next"));
   const [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [email, setEmail] = useState("admin@beautyhub.vn"),
+    [password, setPassword] = useState("");
   if (user && !authLoading) return <Navigate to={next} replace />;
   return (
     <div className="auth-layout">
@@ -156,6 +166,9 @@ function Login() {
         </div>
       </div>
       <section className="auth-form">
+        <div className="auth-brand-badge">
+          <img src="/assets/brand-logo.png" alt="BeautyHub" className="auth-logo-img" width="76" height="76" />
+        </div>
         <span className="eyebrow">RẤT VUI ĐƯỢC GẶP BẠN</span>
         <h1>Chào bạn.</h1>
         <p>
@@ -170,6 +183,7 @@ function Login() {
         )}
         {error && <Alert>{error}</Alert>}
         <button
+          type="button"
           className="btn google full"
           disabled={!configured || busy}
           onClick={async () => {
@@ -192,6 +206,58 @@ function Login() {
           <strong>G</strong>
           {busy ? "Đang mở Google…" : "Tiếp tục với Google"}
         </button>
+
+        <div className="auth-divider">
+          <span>HOẶC ĐĂNG NHẬP BẰNG EMAIL / ADMIN</span>
+        </div>
+
+        <form
+          className="auth-email-form"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            setError("");
+            try {
+              const { error: err } = await client().auth.signInWithPassword({
+                email,
+                password,
+              });
+              if (err) throw err;
+            } catch (err) {
+              setError(errorText(err));
+              setBusy(false);
+            }
+          }}
+        >
+          <Field label="Email">
+            <input
+              type="email"
+              required
+              value={email}
+              autoComplete="email"
+              placeholder="admin@beautyhub.vn"
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </Field>
+          <Field label="Mật khẩu">
+            <input
+              type="password"
+              required
+              value={password}
+              autoComplete="current-password"
+              placeholder="Nhập mật khẩu..."
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </Field>
+          <button
+            type="submit"
+            className="btn full"
+            disabled={!configured || busy}
+          >
+            {busy ? "Đang đăng nhập…" : "Đăng nhập Email"}
+          </button>
+        </form>
+
         <small>
           Bằng việc tiếp tục, bạn đồng ý với{" "}
           <Link to="/policies">chính sách của BeautyHub</Link>.

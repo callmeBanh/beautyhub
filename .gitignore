@@ -7,3 +7,5 @@ coverage/
 *.local
 .supabase/
 supabase/.temp/
+test-results/
+test-results-pwa/

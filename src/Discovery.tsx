@@ -135,6 +135,10 @@ export function Home() {
       </section>
       <div className="trust-bar">
         <span>
+          <img src="/assets/brand-mark.png" alt="" className="trust-mark-icon" width="20" height="20" />
+          Nền tảng đúng người, đúng khoảnh khắc
+        </span>
+        <span>
           <Camera size={17} />
           Tác phẩm để bạn chọn đúng gu
         </span>

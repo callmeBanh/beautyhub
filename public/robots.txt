@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /account
+Disallow: /notifications
+Disallow: /checkout
+Disallow: /auth/
+
+Sitemap: https://beautyhub.vn/sitemap.xml

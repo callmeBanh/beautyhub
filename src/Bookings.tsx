@@ -17,6 +17,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { client, rpc, track } from "./api";
+import { buildVietQrUrl } from "./vietqr";
 import { useApp } from "./context";
 import {
   dateTime,
@@ -545,16 +546,79 @@ export function BookingDetail() {
                   <strong>{b.hold_until && dateTime(b.hold_until)}</strong>.
                   Không chuyển sau thời hạn này.
                 </p>
-                <dl className="bank-info">
-                  <dt>Ngân hàng</dt>
-                  <dd>{b.snapshot.bank_name}</dd>
-                  <dt>Số tài khoản</dt>
-                  <dd>{b.snapshot.bank_account}</dd>
-                  <dt>Chủ tài khoản</dt>
-                  <dd>{b.snapshot.bank_holder}</dd>
-                  <dt>Nội dung chuyển khoản</dt>
-                  <dd className="reference">{paymentReference(b.id)}</dd>
-                </dl>
+                <div className="vietqr-card">
+                  <div className="vietqr-qr-wrap">
+                    <img
+                      src={buildVietQrUrl({
+                        bankName: b.snapshot.bank_name,
+                        accountNo: b.snapshot.bank_account,
+                        accountHolder: b.snapshot.bank_holder,
+                        amount: b.deposit,
+                        memo: paymentReference(b.id),
+                      })}
+                      alt="VietQR Chuyển khoản cọc"
+                      className="vietqr-img"
+                      loading="lazy"
+                    />
+                    <small className="vietqr-tip">
+                      Mở app ngân hàng bất kỳ để quét mã QR có sẵn số tiền và nội dung.
+                    </small>
+                  </div>
+                  <dl className="bank-info">
+                    <dt>Ngân hàng</dt>
+                    <dd>{b.snapshot.bank_name}</dd>
+                    <dt>Số tài khoản</dt>
+                    <dd>
+                      <span className="copyable-value">{b.snapshot.bank_account}</span>
+                      <button
+                        type="button"
+                        className="btn-copy"
+                        title="Sao chép số tài khoản"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(b.snapshot.bank_account);
+                          toast("Đã sao chép số tài khoản!");
+                        }}
+                      >
+                        <Copy size={12} />
+                        Sao chép
+                      </button>
+                    </dd>
+                    <dt>Chủ tài khoản</dt>
+                    <dd>{b.snapshot.bank_holder}</dd>
+                    <dt>Số tiền cọc</dt>
+                    <dd>
+                      <span className="copyable-value">{money(b.deposit)}</span>
+                      <button
+                        type="button"
+                        className="btn-copy"
+                        title="Sao chép số tiền"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(String(b.deposit));
+                          toast("Đã sao chép số tiền!");
+                        }}
+                      >
+                        <Copy size={12} />
+                        Sao chép
+                      </button>
+                    </dd>
+                    <dt>Nội dung chuyển</dt>
+                    <dd className="reference">
+                      <span className="copyable-value">{paymentReference(b.id)}</span>
+                      <button
+                        type="button"
+                        className="btn-copy"
+                        title="Sao chép nội dung chuyển khoản"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(paymentReference(b.id));
+                          toast("Đã sao chép nội dung!");
+                        }}
+                      >
+                        <Copy size={12} />
+                        Sao chép
+                      </button>
+                    </dd>
+                  </dl>
+                </div>
                 {customer && (
                   <div className="actions">
                     <button

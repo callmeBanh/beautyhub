@@ -1,0 +1,19 @@
+{
+  "name": "BeautyHub — Đặt lịch Photographer & Makeup Artist",
+  "short_name": "BeautyHub",
+  "description": "Nền tảng tìm kiếm và đặt lịch thợ chụp ảnh, makeup artist uy tín tại TP.HCM",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fdfbf7",
+  "theme_color": "#b95b43",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
+
