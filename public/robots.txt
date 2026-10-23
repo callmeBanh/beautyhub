@@ -7,3 +7,4 @@ Disallow: /checkout
 Disallow: /auth/
 
 Sitemap: https://beautyhub.vn/sitemap.xml
+
