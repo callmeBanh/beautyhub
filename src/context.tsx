@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import type { User } from "@supabase/supabase-js";
-import { db, listProviders } from "./api";
+import { db, listProviders, rpc } from "./api";
 import {
   errorText,
   type Profile,
@@ -24,11 +24,14 @@ type State = {
   error: string;
   refresh: () => Promise<void>;
   toast: (s: string) => void;
+  favorites: Set<string>;
+  setFavorite: (provider: string, saved: boolean) => Promise<void>;
 };
 const Context = createContext<State>(null!);
 export const useApp = () => useContext(Context);
 export function AppProvider({ children }: { children: ReactNode }) {
   const generation = useRef(0);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [user, setUser] = useState<User | null>(null),
     [profile, setProfile] = useState<Profile | null>(null),
     [providers, setProviders] = useState<Provider[]>([]),
@@ -42,17 +45,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const version = ++generation.current;
     try {
       setError("");
-      const [ps, cfg] = await Promise.all([
-        listProviders(),
-        db.from("settings").select("*").single(),
+      const [session, cfg] = await Promise.all([
+        db.auth.getUser(),
+        rpc<Settings[]>("public_settings"),
       ]);
       if (version !== generation.current) return;
-      if (cfg.error) throw cfg.error;
-      setProviders(ps);
-      setSettings(cfg.data);
-      const {
-        data: { user: current },
-      } = await db.auth.getUser();
+      if (!cfg[0]) throw new Error("Không tải được cấu hình công khai.");
+      let nextSettings = cfg[0];
+      let nextProfile: Profile | null = null;
+      let nextFavorites = new Set<string>();
+      const current = session.data.user;
+      const ps = await listProviders(current?.id);
       if (version !== generation.current) return;
       setUser(current);
       if (current) {
@@ -63,8 +66,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
           .single();
         if (version !== generation.current) return;
         if (e) throw e;
-        setProfile(data);
-      } else setProfile(null);
+        nextProfile = data;
+        const saved = await db.from("provider_favorites").select("provider_id");
+        if (version !== generation.current) return;
+        if (saved.error) throw saved.error;
+        nextFavorites = new Set(
+          (saved.data || []).map((row) => row.provider_id),
+        );
+        if (nextProfile?.role === "ADMIN") {
+          const full = await db.from("settings").select("*").single();
+          if (version !== generation.current) return;
+          if (full.error) throw full.error;
+          nextSettings = full.data;
+        }
+      }
+      setProviders(ps);
+      setSettings(nextSettings);
+      setProfile(nextProfile);
+      setFavorites(nextFavorites);
     } catch (e) {
       if (version === generation.current) setError(errorText(e));
     } finally {
@@ -74,15 +93,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
   }
+  async function setFavorite(provider: string, saved: boolean) {
+    const version = generation.current;
+    if (!user) throw new Error("Vui lòng đăng nhập để lưu creator.");
+    await rpc("set_favorite", { p_provider: provider, p_saved: saved });
+    if (version !== generation.current) return;
+    setFavorites((previous) => {
+      const next = new Set(previous);
+      saved ? next.add(provider) : next.delete(provider);
+      return next;
+    });
+  }
   useEffect(() => {
     void refresh();
     if (!db) return;
     const {
       data: { subscription },
     } = db.auth.onAuthStateChange((_event, u) => {
+      if (_event === "SIGNED_OUT") {
+        try {
+          Object.keys(sessionStorage)
+            .filter((key) => key.startsWith("bh-draft:"))
+            .forEach((key) => sessionStorage.removeItem(key));
+        } catch {
+          /* Storage may be blocked. */
+        }
+      }
       generation.current++;
       setAuthLoading(true);
       setProfile(null);
+      setFavorites(new Set());
+      setSettings(null);
       setProviders([]);
       setUser(u?.user || null);
       if (!u) setProfile(null);
@@ -108,6 +149,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         error,
         refresh,
         toast: setMessage,
+        favorites,
+        setFavorite,
       }}
     >
       {children}

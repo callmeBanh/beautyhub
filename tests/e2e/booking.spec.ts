@@ -1,0 +1,1021 @@
+// Browser contract tests use intercepted Supabase HTTP, never a live payment service.
+// Real authorization/state transitions run separately in database.test.ts.
+import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
+
+const customer = "11111111-1111-4111-8111-111111111111";
+const owner = "33333333-3333-4333-8333-333333333333";
+const admin = "44444444-4444-4444-8444-444444444444";
+const bid = "55555555-5555-4555-8555-555555555555";
+const pkg = {
+  id: "package-1",
+  provider_id: "provider-1",
+  name: "Gói chân dung",
+  service: "Personal",
+  description: "Buổi chụp chân dung hai giờ",
+  duration: 120,
+  price: 1200000,
+  delivery_days: 7,
+  includes: "20 ảnh chỉnh",
+  exclusions: "Studio",
+  active: true,
+};
+const start = new Date(Date.now() + 7 * 86400000).toISOString();
+const settings = {
+  ready: true,
+  bank_name: "Test bank",
+  bank_account: "123456789",
+  bank_holder: "TEST",
+  support_url: "https://example.com",
+  cancellation_policy: "Chính sách kiểm thử. ".repeat(10),
+  policy_version: 1,
+};
+const provider = {
+  id: "provider-1",
+  owner_id: owner,
+  slug: "test-studio",
+  name: "Test Studio",
+  category: "Photographer",
+  bio: "Hồ sơ kiểm thử",
+  districts: ["Quận 1"],
+  styles: ["Natural", "Korean"],
+  status: "APPROVED",
+  packages: [pkg],
+  portfolio_assets: [],
+  reviews: [],
+};
+
+async function setup(context: BrowserContext) {
+  const stateProvider = structuredClone(provider);
+  let hours: any[] = [];
+  let notices: any[] = [];
+  let actor = customer;
+  let booking: any = null;
+  let reviews: any[] = [];
+  let tickets: any[] = [];
+  let failCreate = false;
+  let failSlots = false;
+  let catalogProviders = [stateProvider];
+  let failCatalog = false;
+  const favorites = new Set<string>();
+  const keys: string[] = [];
+  await context.addInitScript(
+    ({ customer }) => {
+      const user = {
+        id: customer,
+        email: "test@example.com",
+        aud: "authenticated",
+        role: "authenticated",
+        app_metadata: {},
+        user_metadata: {},
+        created_at: new Date().toISOString(),
+      };
+      localStorage.setItem(
+        "sb-test-auth-token",
+        JSON.stringify({
+          access_token: "test-session-token",
+          refresh_token: "test-refresh",
+          expires_at: Math.floor(Date.now() / 1000) + 3600,
+          expires_in: 3600,
+          token_type: "bearer",
+          user,
+        }),
+      );
+    },
+    { customer },
+  );
+  await context.route("https://test.supabase.co/**", async (route) => {
+    const req = route.request(),
+      url = new URL(req.url());
+    const body = req.method() === "POST" ? req.postDataJSON() || {} : {};
+    let data: any = [];
+    let status = 200;
+    const name = url.pathname.split("/").pop();
+    if (url.pathname.includes("/auth/"))
+      data = {
+        id: actor,
+        email: "test@example.com",
+        aud: "authenticated",
+        role: "authenticated",
+        app_metadata: {},
+        user_metadata: {},
+      };
+    else if (url.pathname.includes("/rpc/")) {
+      if (
+        [
+          "submit_review",
+          "request_support",
+          "confirm_refund",
+          "reconcile_late_deposit",
+        ].includes(name || "")
+      )
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      switch (name) {
+        case "save_provider":
+          Object.assign(stateProvider, {
+            name: body.p_name,
+            slug: body.p_slug,
+            bio: body.p_bio,
+            category: body.p_category,
+            districts: body.p_districts,
+            styles: body.p_styles,
+            status: "DRAFT",
+          });
+          data = stateProvider.id;
+          break;
+        case "save_package": {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          const saved = {
+            id: body.p_id || "package-new",
+            provider_id: stateProvider.id,
+            name: body.p_name,
+            service: body.p_service,
+            description: body.p_description,
+            duration: body.p_duration,
+            price: body.p_price,
+            delivery_days: body.p_days,
+            includes: body.p_includes,
+            exclusions: body.p_exclusions,
+            active: body.p_active,
+          };
+          stateProvider.packages = [
+            ...stateProvider.packages.filter((p) => p.id !== saved.id),
+            saved,
+          ];
+          data = saved.id;
+          break;
+        }
+        case "add_availability":
+          hours.push({
+            id: "hours-1",
+            starts_at: body.p_start,
+            ends_at: body.p_end,
+          });
+          data = null;
+          break;
+        case "remove_availability":
+          hours = hours.filter((h) => h.id !== body.p_id);
+          data = null;
+          break;
+        case "mark_notifications_read":
+          notices = notices.map((n) => ({
+            ...n,
+            read_at: new Date().toISOString(),
+          }));
+          data = null;
+          break;
+        case "public_settings":
+          data = [
+            {
+              ready: settings.ready,
+              support_url: settings.support_url,
+              cancellation_policy: settings.cancellation_policy,
+              policy_version: settings.policy_version,
+            },
+          ];
+          break;
+        case "set_favorite":
+          body.p_saved
+            ? favorites.add(body.p_provider)
+            : favorites.delete(body.p_provider);
+          data = null;
+          break;
+        case "provider_catalog": {
+          if (failCatalog) {
+            status = 503;
+            data = { message: "Network catalog unavailable" };
+            break;
+          }
+          const f = body.p_filters || {};
+          let candidates = catalogProviders.filter(
+            (p) =>
+              p.status === "APPROVED" &&
+              (!f.query ||
+                p.name.toLowerCase().includes(f.query.toLowerCase())) &&
+              (!f.category || p.category === f.category) &&
+              (!f.district || p.districts.includes(f.district)) &&
+              (!f.style || p.styles.includes(f.style)) &&
+              (!body.p_saved || favorites.has(p.id)) &&
+              p.packages.some(
+                (k) =>
+                  k.active &&
+                  (!f.service || k.service === f.service) &&
+                  k.price <= (f.budget ?? 100000000),
+              ),
+          );
+          if (f.sort === "price")
+            candidates = [...candidates].sort(
+              (a, b) => a.packages[0].price - b.packages[0].price,
+            );
+          const page = body.p_page || 1,
+            size = body.p_size || 12;
+          data = {
+            total: candidates.length,
+            page,
+            size,
+            items: candidates
+              .slice((page - 1) * size, page * size)
+              .map((p) => ({ ...p, reviews, review_count: reviews.length })),
+          };
+          break;
+        }
+        case "provider_detail": {
+          const found = catalogProviders.find((p) =>
+            body.p_slug
+              ? p.slug === body.p_slug
+              : p.packages.some((k) => k.id === body.p_package && k.active),
+          );
+          data =
+            found?.status === "APPROVED"
+              ? { ...found, reviews, review_count: reviews.length }
+              : null;
+          break;
+        }
+        case "provider_stats":
+          data = [];
+          break;
+        case "provider_reviews":
+          data = reviews;
+          break;
+        case "free_slots":
+          if (failSlots) {
+            status = 503;
+            data = { message: "Unavailable" };
+          } else
+            data = [
+              {
+                starts_at: start,
+                ends_at: new Date(Date.parse(start) + 7200000).toISOString(),
+              },
+            ];
+          break;
+        case "create_booking":
+          keys.push(body.p_key);
+          if (failCreate) {
+            failCreate = false;
+            status = 503;
+            data = { message: "Network temporarily unavailable" };
+            break;
+          }
+          booking = {
+            id: bid,
+            customer_id: customer,
+            provider_id: provider.id,
+            package_id: pkg.id,
+            customer_name: body.p_name,
+            phone: body.p_phone,
+            district: body.p_district,
+            address: body.p_address,
+            notes: body.p_notes,
+            price: pkg.price,
+            deposit: 360000,
+            status: "REQUESTED",
+            payment_status: "UNPAID",
+            starts_at: start,
+            ends_at: new Date(Date.parse(start) + 7200000).toISOString(),
+            hold_until: new Date(Date.now() + 3600000).toISOString(),
+            created_at: new Date().toISOString(),
+            snapshot: {
+              provider_name: provider.name,
+              package: pkg,
+              policy: settings.cancellation_policy,
+              ...settings,
+            },
+          };
+          data = bid;
+          break;
+        case "booking_contact":
+          data = "0901234567";
+          break;
+        case "booking_action":
+          // Delay lets keyboard tests exercise busy modal behavior.
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          if (body.p_action === "ACCEPT") booking.status = "AWAITING_DEPOSIT";
+          if (body.p_action === "REPORT_PAYMENT") {
+            booking.status = "PAYMENT_REVIEW";
+            booking.payment_status = "REPORTED";
+          }
+          if (body.p_action === "VERIFY_PAYMENT") {
+            booking.status = "CONFIRMED";
+            booking.payment_status = "PAID";
+          }
+          if (body.p_action === "COMPLETE") booking.status = "COMPLETED";
+          if (body.p_action === "CANCEL") booking.status = "CANCELLED";
+          data = null;
+          break;
+        case "submit_review":
+          reviews = [
+            {
+              id: "review-1",
+              provider_id: provider.id,
+              booking_id: bid,
+              author_name: "Khách",
+              rating: 5,
+              text: body.p_text,
+              hidden: false,
+              created_at: new Date().toISOString(),
+            },
+          ];
+          data = null;
+          break;
+        case "request_support":
+          tickets = [
+            {
+              id: "ticket-1",
+              booking_id: bid,
+              kind: body.p_kind,
+              message: body.p_message,
+              status: "OPEN",
+              created_at: new Date().toISOString(),
+            },
+          ];
+          data = "ticket-1";
+          break;
+        case "resolve_support":
+          booking.status = "CANCELLED";
+          booking.payment_status = "REFUND_PENDING";
+          booking.refund_amount = body.p_refund;
+          tickets[0].status = "RESOLVED";
+          data = null;
+          break;
+        case "confirm_refund":
+          booking.payment_status = "REFUNDED";
+          data = null;
+          break;
+        case "reconcile_late_deposit":
+          booking.payment_status = "REFUND_PENDING";
+          booking.refund_amount = booking.deposit;
+          data = null;
+          break;
+        case "admin_metrics":
+          data = {
+            users: 3,
+            active_providers: 1,
+            requests: 1,
+            paid: 0,
+            completed: 0,
+            gmv: 0,
+            cancellation_rate: 0,
+            funnel: {},
+          };
+          break;
+        default:
+          data = null;
+      }
+    } else {
+      switch (name) {
+        case "providers":
+          data = url.searchParams.has("owner_id")
+            ? actor === owner
+              ? [stateProvider]
+              : []
+            : catalogProviders;
+          if (url.searchParams.get("status")?.startsWith("eq."))
+            data = data.filter(
+              (p: any) => p.status === url.searchParams.get("status")?.slice(3),
+            );
+          break;
+        case "availability":
+          data = hours;
+          break;
+        case "notifications":
+          data = url.searchParams.has("read_at")
+            ? notices.filter((n) => !n.read_at)
+            : notices;
+          break;
+        case "settings":
+          data = settings;
+          break;
+        case "profiles":
+          data = req.headers().accept?.includes("object")
+            ? {
+                id: actor,
+                display_name: "Khách thử",
+                phone: "0901234567",
+                role:
+                  actor === admin
+                    ? "ADMIN"
+                    : actor === owner
+                      ? "PROVIDER"
+                      : "CUSTOMER",
+              }
+            : [];
+          break;
+        case "bookings":
+          data = url.searchParams.has("id")
+            ? booking
+            : booking
+              ? [booking]
+              : [];
+          if (url.searchParams.get("id") === "eq.missing") {
+            status = 406;
+            data = { message: "Không tìm thấy booking" };
+          }
+          if (!url.searchParams.has("id") && Array.isArray(data)) {
+            for (const field of ["status", "payment_status"]) {
+              const filter = url.searchParams.get(field);
+              if (filter?.startsWith("eq."))
+                data = data.filter(
+                  (row: any) => row[field] === filter.slice(3),
+                );
+            }
+            if (url.searchParams.has("hold_until")) data = [];
+          }
+          break;
+        case "provider_favorites":
+          data = [...favorites].map((provider_id) => ({ provider_id }));
+          break;
+        case "reviews":
+          data = reviews[0] || null;
+          break;
+        case "support_requests":
+          data = tickets;
+          break;
+        default:
+          data = [];
+      }
+    }
+    const total = Array.isArray(data) ? data.length : 1;
+    const offset = Number(url.searchParams.get("offset") || 0);
+    const limit = Number(url.searchParams.get("limit") || total);
+    if (Array.isArray(data) && url.searchParams.has("limit"))
+      data = data.slice(offset, offset + limit);
+    await route.fulfill({
+      status,
+      contentType: "application/json",
+      body: JSON.stringify(data),
+      headers: {
+        "content-range": `${offset}-${Math.max(offset, offset + (Array.isArray(data) ? data.length : 1) - 1)}/${total}`,
+        "access-control-expose-headers": "content-range",
+      },
+    });
+  });
+  return {
+    role(id: string) {
+      actor = id;
+    },
+    seedCatalog(count: number) {
+      catalogProviders = Array.from({ length: count }, (_, i) => ({
+        ...structuredClone(stateProvider),
+        id: `provider-${i + 1}`,
+        slug: `studio-${i + 1}`,
+        name: `Studio ${i + 1}`,
+        packages: [
+          {
+            ...pkg,
+            id: `package-${i + 1}`,
+            provider_id: `provider-${i + 1}`,
+            price: 100000 + i * 10000,
+          },
+        ],
+      }));
+    },
+    failCatalog(value: boolean) {
+      failCatalog = value;
+    },
+    failCreate() {
+      failCreate = true;
+    },
+    failSlots() {
+      failSlots = true;
+    },
+    endService() {
+      booking.ends_at = new Date(Date.now() - 1000).toISOString();
+    },
+    keys,
+    seedNotices() {
+      notices = [
+        {
+          id: "notice-1",
+          booking_id: null,
+          text: "REQUESTED",
+          read_at: null,
+          created_at: new Date().toISOString(),
+        },
+      ];
+    },
+    seedTickets(count: number) {
+      tickets = Array.from({ length: count }, (_, i) => ({
+        id: `ticket-${i + 1}`,
+        booking_id: bid,
+        kind: "HELP",
+        message: `Yêu cầu hỗ trợ số ${i + 1}`,
+        status: "OPEN",
+        created_at: new Date().toISOString(),
+      }));
+    },
+  };
+}
+
+async function requestBooking(page: Page, retry = false) {
+  await page.goto(
+    "/explore?category=Photographer&district=Quận+1&style=Natural&service=Personal&budget=1500000",
+  );
+  await page.getByRole("link", { name: /Test Studio/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Test Studio", exact: true }),
+  ).toBeVisible();
+  await page.locator(".slot").first().click();
+  await page.getByLabel("Họ và tên").fill("Khách thử nghiệm");
+  await page
+    .getByLabel("Địa chỉ / địa điểm gặp cụ thể")
+    .fill("12 Nguyễn Huệ, TP.HCM");
+  await page.locator('input[type="checkbox"]').check();
+  await page.getByRole("button", { name: /Gửi yêu cầu/ }).click();
+  if (retry) {
+    await expect(page.getByRole("alert")).toContainText("Không kết nối được");
+    await expect(page.getByLabel("Địa chỉ / địa điểm gặp cụ thể")).toHaveValue(
+      "12 Nguyễn Huệ, TP.HCM",
+    );
+    await page.getByRole("button", { name: /Gửi yêu cầu/ }).click();
+  }
+  await expect(page).toHaveURL(new RegExp(`/bookings/${bid}`));
+  await expect(
+    page.getByRole("heading", { name: "Yêu cầu của bạn đã được gửi." }),
+  ).toBeVisible();
+}
+
+async function confirm(page: Page, button: string, detail?: string) {
+  await page.getByRole("button", { name: button, exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  if (detail) await dialog.locator("textarea").fill(detail);
+  await dialog.getByRole("button", { name: "Xác nhận", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible(); // Busy modal must ignore Escape.
+  await expect(dialog).toBeHidden();
+}
+
+test("booking journey, network retry, payment review, completion and one review", async ({
+  page,
+  context,
+}) => {
+  const api = await setup(context);
+  api.failCreate();
+  await requestBooking(page, true);
+  expect(api.keys).toHaveLength(2);
+  expect(api.keys[0]).toBe(api.keys[1]);
+  api.role(owner);
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Chấp nhận lịch", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: /Chuyển khoản cọc/ }),
+  ).toBeVisible();
+  api.role(customer);
+  await page.reload();
+  await confirm(page, "Tôi đã chuyển tiền", "Bank customer reference 123");
+  await expect(
+    page.getByRole("heading", { name: "Đã nhận thông báo chuyển tiền" }),
+  ).toBeVisible();
+  api.role(admin);
+  await page.reload();
+  await confirm(page, "Xác nhận tiền thực nhận", "Verified bank reference 123");
+  api.endService();
+  api.role(owner);
+  await page.reload();
+  await confirm(page, "Xác nhận đã hoàn thành dịch vụ");
+  api.role(customer);
+  await page.reload();
+  await confirm(page, "Viết đánh giá", "Creator đúng giờ và chất lượng tốt.");
+  await expect(page.getByRole("button", { name: "Viết đánh giá" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page
+      .getByText("Creator đúng giờ và chất lượng tốt.", { exact: false })
+      .first(),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("unpaid cancellation and recoverable missing booking", async ({
+  page,
+  context,
+}) => {
+  await setup(context);
+  await requestBooking(page);
+  await confirm(page, "Hủy yêu cầu");
+  await expect(
+    page.getByRole("heading", { name: "Booking đã được hủy." }),
+  ).toBeVisible();
+  await page.goto("/bookings/missing");
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Thử lại" })).toBeVisible();
+  await expect(
+    page.getByText("12 Nguyễn Huệ, TP.HCM", { exact: false }),
+  ).toHaveCount(0);
+});
+
+test("discovery empty state and slot service error", async ({
+  page,
+  context,
+}) => {
+  const api = await setup(context);
+  await page.goto("/explore?q=does-not-exist");
+  await expect(
+    page.getByRole("heading", { name: "Chưa có creator khớp lựa chọn" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Xem mọi lựa chọn" }).click();
+  api.failSlots();
+  await page.getByRole("link", { name: /Test Studio/ }).click();
+  await expect(page.getByRole("alert")).toContainText("Không tải được lịch");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("paid cancellation through admin support and refund recording", async ({
+  page,
+  context,
+}) => {
+  const api = await setup(context);
+  await requestBooking(page);
+  api.role(owner);
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Chấp nhận lịch", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: /Chuyển khoản cọc/ }),
+  ).toBeVisible();
+  api.role(customer);
+  await page.reload();
+  await confirm(page, "Tôi đã chuyển tiền", "Customer bank reference 123");
+  api.role(admin);
+  await page.reload();
+  await confirm(page, "Xác nhận tiền thực nhận", "Verified bank reference 123");
+  api.role(customer);
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Gửi yêu cầu hỗ trợ", exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .locator("textarea")
+    .fill("Xin hủy và hoàn cọc theo chính sách.");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Xác nhận", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  api.role(admin);
+  await page.goto("/admin");
+  await page.getByRole("button", { name: /^Xử lý yêu cầu hỗ trợ/ }).click();
+  await page
+    .getByLabel("Kết quả và thỏa thuận với khách")
+    .fill("Đồng ý hủy và hoàn toàn bộ cọc theo thỏa thuận.");
+  await page.getByRole("dialog").locator('input[type="checkbox"]').check();
+  await page.getByLabel("Số tiền hoàn khi hủy (VND)").fill("360000");
+  await page
+    .getByRole("button", { name: "Ghi nhận xử lý", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.goto(`/bookings/${bid}`);
+  await confirm(page, "Ghi nhận giao dịch hoàn", "Refund bank reference 123");
+  await expect(
+    page.getByRole("button", { name: "Ghi nhận giao dịch hoàn" }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Đã hoàn tiền:", { exact: false })).toBeVisible();
+});
+
+test("booking works when draft storage is blocked", async ({
+  page,
+  context,
+}) => {
+  await setup(context);
+  await context.addInitScript(() => {
+    Object.defineProperty(window, "sessionStorage", {
+      get() {
+        throw new DOMException("Storage blocked", "SecurityError");
+      },
+    });
+  });
+  await requestBooking(page);
+});
+
+test("late deposit refund preserves cancellation and customer cannot open admin", async ({
+  page,
+  context,
+}) => {
+  const api = await setup(context);
+  await requestBooking(page);
+  await confirm(page, "Hủy yêu cầu");
+  await page.goto("/admin");
+  await expect(
+    page.getByRole("heading", { name: "Bạn không có quyền truy cập" }),
+  ).toBeVisible();
+  api.role(admin);
+  await page.goto(`/bookings/${bid}`);
+  await confirm(
+    page,
+    "Đối soát cọc chuyển muộn để hoàn",
+    "Received late bank deposit 123",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Booking đã được hủy." }),
+  ).toBeVisible();
+  await confirm(
+    page,
+    "Ghi nhận giao dịch hoàn",
+    "Actual late refund reference 123",
+  );
+  await expect(page.getByText("Đã hoàn tiền:", { exact: false })).toBeVisible();
+});
+
+test("save a creator and remove them from the private list", async ({
+  page,
+  context,
+}) => {
+  await setup(context);
+  await page.goto("/explore");
+  await page
+    .getByRole("button", { name: "Lưu Test Studio", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Bỏ lưu Test Studio", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.goto("/saved");
+  await expect(page.getByRole("link", { name: /Test Studio/ })).toBeVisible();
+  await page
+    .getByRole("button", { name: "Bỏ lưu Test Studio", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Bạn chưa lưu creator nào" }),
+  ).toBeVisible();
+});
+
+test("admin can reach support outside the first page", async ({
+  page,
+  context,
+}) => {
+  const api = await setup(context);
+  api.role(admin);
+  api.seedTickets(30);
+  await page.goto("/admin");
+  await expect(
+    page.getByText("Yêu cầu hỗ trợ số 25", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Yêu cầu hỗ trợ số 26", { exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Trang sau: yêu cầu hỗ trợ đang mở" })
+    .click();
+  await expect(
+    page.getByText("Yêu cầu hỗ trợ số 26", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Yêu cầu hỗ trợ số 1", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Trang sau: yêu cầu hỗ trợ đang mở" }),
+  ).toBeDisabled();
+});
+
+test("creator manages profile, package and available hours", async ({
+  page,
+  context,
+}) => {
+  const api = await setup(context);
+  api.role(owner);
+  await page.goto("/studio");
+  await page
+    .getByRole("button", { name: "Hồ sơ creator", exact: true })
+    .click();
+  await page
+    .getByLabel("Giới thiệu", { exact: true })
+    .fill(
+      "Hồ sơ creator dùng kiểm thử trải nghiệm, phong cách tự nhiên và đúng giờ.",
+    );
+  await page.getByRole("button", { name: "Lưu hồ sơ", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Gửi hồ sơ để duyệt", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Gói dịch vụ", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Thêm gói dịch vụ", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Tên gói", { exact: true }).fill("Gói profile mới");
+  await dialog
+    .getByLabel("Mô tả", { exact: true })
+    .fill("Chụp profile với ánh sáng tự nhiên.");
+  await dialog.getByLabel("Bao gồm", { exact: true }).fill("10 ảnh chỉnh màu");
+  await dialog.getByRole("button", { name: "Lưu gói", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toBeHidden();
+  await expect(
+    page.getByRole("heading", { name: "Gói profile mới", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Lịch làm việc", exact: true })
+    .click();
+  await page
+    .getByLabel("Ngày", { exact: true })
+    .fill(new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10));
+  await page.getByRole("button", { name: "Mở lịch", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Đóng khoảng giờ", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Đóng khoảng giờ", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Đóng khoảng giờ", exact: true }),
+  ).toHaveCount(0);
+  expect(
+    (
+      await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+        .analyze()
+    ).violations,
+  ).toEqual([]);
+});
+
+test("unread notifications can be marked read", async ({ page, context }) => {
+  const api = await setup(context);
+  api.seedNotices();
+  await page.goto("/notifications");
+  await expect(
+    page.getByRole("link", { name: "Thông báo: 1 chưa đọc", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Đánh dấu đã đọc", exact: true })
+    .click();
+  await expect(
+    page.getByRole("link", { name: "Thông báo", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Đánh dấu đã đọc", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("accessibility of discovery, creator, booking and admin", async ({
+  page,
+  context,
+}, testInfo) => {
+  const api = await setup(context);
+  for (const path of ["/explore", "/creators/test-studio"]) {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    expect(
+      (
+        await new AxeBuilder({ page })
+          .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+          .analyze()
+      ).violations,
+    ).toEqual([]);
+    await page.screenshot({
+      path: testInfo.outputPath(
+        path.includes("creators") ? "creator.png" : "discovery.png",
+      ),
+      fullPage: true,
+    });
+  }
+  await requestBooking(page);
+  expect(
+    (
+      await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+        .analyze()
+    ).violations,
+  ).toEqual([]);
+  await page.screenshot({
+    path: testInfo.outputPath("booking.png"),
+    fullPage: true,
+  });
+  api.role(admin);
+  await page.goto("/admin");
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  expect(
+    (
+      await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+        .analyze()
+    ).violations,
+  ).toEqual([]);
+  await page.screenshot({
+    path: testInfo.outputPath("admin.png"),
+    fullPage: true,
+  });
+});
+
+test("catalog paginates and filters on the server without slot fan-out", async ({
+  page,
+  context,
+}) => {
+  const api = await setup(context);
+  api.seedCatalog(29);
+  const calls: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/rpc/")) calls.push(request.url());
+  });
+  await page.goto("/explore?district=Quận+1");
+  await expect(page.locator(".results .creator-card")).toHaveCount(12);
+  await expect(page.locator(".results-top")).toContainText(
+    "29 creator phù hợp",
+  );
+  await page.getByRole("button", { name: "Trang sau", exact: true }).click();
+  await expect(page).toHaveURL(/page=2/);
+  await expect(
+    page.getByRole("status").filter({ hasText: "Trang 2/3" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Studio 13", exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Sắp xếp").selectOption("price");
+  await expect(page).not.toHaveURL(/page=2/);
+  await expect(
+    page.getByRole("heading", { name: "Studio 1", exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Tên creator").fill("Studio 29");
+  await expect(page.locator(".results .creator-card")).toHaveCount(1);
+  await expect(
+    page.getByRole("heading", { name: "Studio 29", exact: true }),
+  ).toBeVisible();
+  expect(calls.some((url) => url.includes("/free_slots"))).toBe(false);
+});
+
+test("creator and checkout deep links work beyond the homepage selection", async ({
+  page,
+  context,
+}) => {
+  const api = await setup(context);
+  api.seedCatalog(29);
+  await page.goto("/creators/studio-29");
+  await expect(
+    page.getByRole("heading", { name: "Studio 29", exact: true }),
+  ).toBeVisible();
+  await expect(page).toHaveTitle(/Studio 29/);
+  await page.locator(".slot").first().click();
+  await expect(page).toHaveURL(/checkout\/package-29/);
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Gửi yêu cầu đặt lịch." }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Khu vực")).toHaveValue("Quận 1");
+});
+
+test("catalog errors retain filters, allow retry, and hide stale results", async ({
+  page,
+  context,
+}) => {
+  const api = await setup(context);
+  await page.goto("/explore?style=Natural");
+  await expect(page.locator(".results .creator-card")).toHaveCount(1);
+  api.failCatalog(true);
+  await page.getByLabel("Tên creator").fill("Test");
+  await expect(page.locator(".results").getByRole("alert")).toContainText(
+    "Không tải được danh sách",
+  );
+  await expect(page.locator(".results .creator-card")).toHaveCount(0);
+  api.failCatalog(false);
+  await page
+    .locator(".results")
+    .getByRole("button", { name: "Thử lại" })
+    .click();
+  await expect(page.locator(".results .creator-card")).toHaveCount(1);
+  await expect(page.getByLabel("Tên creator")).toHaveValue("Test");
+  await expect(page.getByLabel("Phong cách")).toHaveValue("Natural");
+});
+
+test("admin can review a creator outside the first 25 profiles", async ({
+  page,
+  context,
+}) => {
+  const api = await setup(context);
+  api.seedCatalog(29);
+  api.role(admin);
+  await page.goto("/admin");
+  await page
+    .getByRole("button", { name: "Xác minh creator", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Studio 25", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Studio 26", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Trang sau: hồ sơ creator", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Studio 29", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Studio 1", exact: true }),
+  ).toHaveCount(0);
+});

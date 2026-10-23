@@ -1,4 +1,10 @@
-import { useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowRight,
@@ -10,25 +16,248 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
-import { client, rpc } from "./api";
+import { client, rpc, signProviderAssets } from "./api";
 import { useApp } from "./context";
 import {
   dateTime,
-  effectiveStatus,
   errorText,
   money,
   type Booking,
   type Profile,
+  type Provider,
   type Support,
 } from "./domain";
-import { Alert, Badge, Empty, Field, Modal } from "./ui";
+import { Alert, Badge, Empty, Field, Loading, Modal } from "./ui";
 import { BookingCard } from "./Bookings";
+const PAGE_SIZE = 25;
+type AdminList =
+  | "bookings"
+  | "reviews"
+  | "refunds"
+  | "overdue"
+  | "tickets"
+  | "users"
+  | "audit"
+  | "providers";
+type Audit = { id: string; action: string; detail: string; created_at: string };
+
+function listQuery(list: AdminList) {
+  const table =
+    list === "providers"
+      ? "providers"
+      : list === "tickets"
+        ? "support_requests"
+        : list === "users"
+          ? "profiles"
+          : list === "audit"
+            ? "audit_log"
+            : "bookings";
+  let query = client()
+    .from(table)
+    .select(
+      list === "providers"
+        ? "*,packages(*),portfolio_assets(*),reviews(*)"
+        : "*",
+      { count: "exact" },
+    );
+  if (list === "providers")
+    query = query
+      .limit(20, { referencedTable: "reviews" })
+      .order("created_at", { referencedTable: "reviews", ascending: false });
+  if (list === "reviews") query = query.eq("status", "PAYMENT_REVIEW");
+  if (list === "refunds") query = query.eq("payment_status", "REFUND_PENDING");
+  if (list === "overdue")
+    query = query
+      .in("status", ["REQUESTED", "AWAITING_DEPOSIT"])
+      .lte("hold_until", new Date().toISOString());
+  if (list === "tickets") query = query.eq("status", "OPEN");
+  if (list !== "users") query = query.order("created_at", { ascending: false });
+  return query.order("id", { ascending: false });
+}
+
+function useAdminPage<T>(list: AdminList) {
+  const [position, setPosition] = useState({ list, page: 1 });
+  const page = position.list === list ? position.page : 1;
+  const [data, setData] = useState<T[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const request = useRef(0);
+  const load = useCallback(async () => {
+    const id = ++request.current;
+    setLoading(true);
+    setError("");
+    try {
+      const from = (page - 1) * PAGE_SIZE;
+      let result = await listQuery(list).range(from, from + PAGE_SIZE - 1);
+      if (id !== request.current) return;
+      // Trang cuối có thể trả về 416 sau khi dữ liệu bị xóa hoặc đổi trạng thái.
+      if (result.error?.code === "PGRST103") {
+        result = await listQuery(list).range(0, 0);
+        if (id !== request.current) return;
+        if (result.error) throw result.error;
+        setTotal(result.count ?? 0);
+        setPosition({
+          list,
+          page: Math.max(1, Math.ceil((result.count ?? 0) / PAGE_SIZE)),
+        });
+        return;
+      }
+      if (result.error) throw result.error;
+      const count = result.count ?? 0;
+      const lastPage = Math.max(1, Math.ceil(count / PAGE_SIZE));
+      setTotal(count);
+      if (page > lastPage) {
+        setPosition({ list, page: lastPage });
+        return;
+      }
+      const data =
+        list === "providers"
+          ? await signProviderAssets(
+              (result.data || []) as unknown as Provider[],
+            )
+          : result.data || [];
+      if (id !== request.current) return;
+      setData(data as T[]);
+    } catch (e) {
+      if (id === request.current) {
+        setData([]);
+        setError(errorText(e));
+      }
+    } finally {
+      if (id === request.current) setLoading(false);
+    }
+  }, [list, page]);
+  useEffect(() => {
+    void load();
+    return () => {
+      request.current++;
+    };
+  }, [load]);
+  function changePage(next: number) {
+    if (loading) return;
+    setLoading(true);
+    setPosition({ list, page: next });
+  }
+  return { data, total, page, loading, error, load, changePage };
+}
+
+type PageState = Omit<ReturnType<typeof useAdminPage>, "data">;
+function PageList({
+  state,
+  label,
+  busy,
+  children,
+}: {
+  state: PageState;
+  label: string;
+  busy: boolean;
+  children: ReactNode;
+}) {
+  const pages = Math.max(1, Math.ceil(state.total / PAGE_SIZE));
+  return (
+    <div aria-busy={state.loading}>
+      <div aria-live="polite" role="status">
+        {state.loading ? (
+          <p className="muted">Đang tải {label}…</p>
+        ) : (
+          !state.error && (
+            <p className="muted">
+              Trang {state.page}/{pages} · tổng {state.total}
+            </p>
+          )
+        )}
+      </div>
+      {state.error && (
+        <Alert>
+          Không tải được {label}: {state.error}
+        </Alert>
+      )}
+      {!state.loading &&
+        !state.error &&
+        (state.total ? children : <p className="muted">Không có dữ liệu.</p>)}
+      <nav className="section-title" aria-label={`Phân trang ${label}`}>
+        <button
+          type="button"
+          className="btn small ghost"
+          aria-label={`Trang trước: ${label}`}
+          disabled={busy || state.loading || state.page <= 1}
+          onClick={() => state.changePage(state.page - 1)}
+        >
+          Trước
+        </button>
+        {state.error && (
+          <button
+            type="button"
+            className="btn small ghost"
+            aria-label={`Tải lại ${label}`}
+            disabled={busy || state.loading}
+            onClick={() => void state.load()}
+          >
+            Thử lại
+          </button>
+        )}
+        <button
+          type="button"
+          className="btn small ghost"
+          aria-label={`Trang sau: ${label}`}
+          disabled={
+            busy || state.loading || Boolean(state.error) || state.page >= pages
+          }
+          onClick={() => state.changePage(state.page + 1)}
+        >
+          Sau
+        </button>
+      </nav>
+    </div>
+  );
+}
+
+function ProviderContact({ ownerId }: { ownerId: string }) {
+  const [phone, setPhone] = useState("Đang tải…");
+  useEffect(() => {
+    let active = true;
+    setPhone("Đang tải…");
+    void (async () => {
+      try {
+        const { data, error } = await client()
+          .from("profiles")
+          .select("phone")
+          .eq("id", ownerId)
+          .single();
+        if (error) throw error;
+        if (active) setPhone(data?.phone || "Chưa cập nhật");
+      } catch (e) {
+        if (active) setPhone(`Không tải được liên hệ: ${errorText(e)}`);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [ownerId]);
+  return <p aria-live="polite">Liên hệ: {phone}</p>;
+}
+
 export function Admin() {
-  const { providers, settings, refresh, toast } = useApp();
+  const { settings, refresh, toast } = useApp();
+  const providerPage = useAdminPage<Provider>("providers");
+  const providers = providerPage.data;
+  const [pendingProviders, setPendingProviders] = useState<number | null>(null);
+  const bookingPage = useAdminPage<Booking>("bookings");
+  const reviewPage = useAdminPage<Booking>("reviews");
+  const refundPage = useAdminPage<Booking>("refunds");
+  const overduePage = useAdminPage<Booking>("overdue");
+  const ticketPage = useAdminPage<Support>("tickets");
+  const userPage = useAdminPage<Profile>("users");
+  const auditPage = useAdminPage<Audit>("audit");
+  const bookings = bookingPage.data,
+    tickets = ticketPage.data,
+    users = userPage.data,
+    audit = auditPage.data;
+  const [resolveBooking, setResolveBooking] = useState<Booking | null>(null);
+  const [resolveLoading, setResolveLoading] = useState(false);
+  const [resolveError, setResolveError] = useState("");
   const [tab, setTab] = useState("queue"),
-    [bookings, setBookings] = useState<Booking[]>([]),
-    [tickets, setTickets] = useState<Support[]>([]),
-    [users, setUsers] = useState<Profile[]>([]),
     [metrics, setMetrics] = useState<{
       users: number;
       active_providers: number;
@@ -39,50 +268,77 @@ export function Admin() {
       cancellation_rate: number;
       funnel: Record<string, number>;
     } | null>(null),
-    [audit, setAudit] = useState<
-      { id: string; action: string; detail: string; created_at: string }[]
-    >([]),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [resolve, setResolve] = useState<Support | null>(null);
-  async function load() {
-    const [b, t, u, a] = await Promise.all([
-      client()
-        .from("bookings")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(500),
-      client()
-        .from("support_requests")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(200),
-      client().from("profiles").select("*").limit(500),
-      client()
-        .from("audit_log")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(100),
-    ]);
-    const e = b.error || t.error || u.error || a.error;
-    if (e) throw e;
-    setBookings(b.data || []);
-    setTickets(t.data || []);
-    setUsers(u.data || []);
-    setAudit(a.data || []);
-    setMetrics(await rpc("admin_metrics"));
-  }
-  useEffect(() => {
-    void load().catch((e) => setError(errorText(e)));
+  const loadMetrics = useCallback(async () => {
+    try {
+      const [summary, pending] = await Promise.all([
+        rpc<NonNullable<typeof metrics>>("admin_metrics"),
+        client()
+          .from("providers")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "PENDING"),
+      ]);
+      if (pending.error) throw pending.error;
+      setMetrics(summary);
+      setPendingProviders(pending.count ?? 0);
+    } catch (e) {
+      setError(errorText(e));
+    }
   }, []);
-  async function run(fn: () => Promise<unknown>) {
+  useEffect(() => {
+    void loadMetrics();
+  }, [loadMetrics]);
+  useEffect(() => {
+    let active = true;
+    setResolveBooking(null);
+    setResolveError("");
+    if (!resolve) {
+      setResolveLoading(false);
+      return;
+    }
+    setResolveLoading(true);
+    void (async () => {
+      try {
+        const { data, error } = await client()
+          .from("bookings")
+          .select("*")
+          .eq("id", resolve.booking_id)
+          .single();
+        if (error) throw error;
+        if (active) setResolveBooking(data as Booking);
+      } catch (e) {
+        if (active) setResolveError(errorText(e));
+      } finally {
+        if (active) setResolveLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [resolve]);
+  async function load() {
+    await Promise.all([
+      providerPage.load(),
+      bookingPage.load(),
+      reviewPage.load(),
+      refundPage.load(),
+      overduePage.load(),
+      ticketPage.load(),
+      userPage.load(),
+      auditPage.load(),
+      loadMetrics(),
+    ]);
+  }
+  async function run(fn?: () => Promise<unknown>) {
     setBusy(true);
     setError("");
     try {
-      await fn();
+      await fn?.();
       await refresh();
       await load();
-      toast("Đã lưu thao tác và lịch sử xử lý.");
+      if (fn) toast("Đã lưu thao tác và lịch sử xử lý.");
       return true;
     } catch (e) {
       setError(errorText(e));
@@ -99,13 +355,18 @@ export function Admin() {
     ["audit", "Lịch sử thao tác", FileText],
     ["settings", "Cấu hình mở beta", Settings],
   ] as const;
-  const reviews = bookings.filter((b) => b.status === "PAYMENT_REVIEW");
-  const overdue = bookings.filter(
-    (b) =>
-      ["REQUESTED", "AWAITING_DEPOSIT"].includes(b.status) &&
-      effectiveStatus(b) === "EXPIRED",
-  );
-  const refunds = bookings.filter((b) => b.payment_status === "REFUND_PENDING");
+  const reviews = reviewPage.data,
+    overdue = overduePage.data,
+    refunds = refundPage.data;
+  const loading = [
+    bookingPage,
+    reviewPage,
+    refundPage,
+    overduePage,
+    ticketPage,
+    userPage,
+    auditPage,
+  ].some((p) => p.loading);
   return (
     <div className="workspace">
       <aside className="workspace-sidebar dark">
@@ -116,6 +377,7 @@ export function Admin() {
             <button
               key={k}
               className={tab === k ? "active" : ""}
+              aria-pressed={tab === k}
               onClick={() => setTab(k)}
             >
               <Icon size={17} />
@@ -136,8 +398,9 @@ export function Admin() {
           </div>
           <button
             className="btn ghost"
-            disabled={busy}
-            onClick={() => run(load)}
+            disabled={busy || loading}
+            aria-label="Làm mới dữ liệu quản trị"
+            onClick={() => void run()}
           >
             Làm mới
           </button>
@@ -153,16 +416,25 @@ export function Admin() {
           <>
             <div className="metrics">
               {[
-                ["Chờ đối soát", reviews.length],
+                [
+                  "Chờ đối soát",
+                  reviewPage.loading || reviewPage.error
+                    ? "—"
+                    : reviewPage.total,
+                ],
                 [
                   "Hỗ trợ đang mở",
-                  tickets.filter((t) => t.status === "OPEN").length,
+                  ticketPage.loading || ticketPage.error
+                    ? "—"
+                    : ticketPage.total,
                 ],
+                ["Hồ sơ chờ duyệt", pendingProviders ?? "—"],
                 [
-                  "Hồ sơ chờ duyệt",
-                  providers.filter((p) => p.status === "PENDING").length,
+                  "Cần hoàn tiền",
+                  refundPage.loading || refundPage.error
+                    ? "—"
+                    : refundPage.total,
                 ],
-                ["Cần hoàn tiền", refunds.length],
               ].map(([t, n]) => (
                 <div className="metric" key={t}>
                   <small>{t}</small>
@@ -176,17 +448,26 @@ export function Admin() {
                 Kiểm tra tiền thực nhận tại ngân hàng trước khi xác nhận. Mở
                 booking để ghi mã giao dịch.
               </p>
-              {reviews.length ? (
-                reviews.map((b) => <BookingCard b={b} key={b.id} />)
-              ) : (
-                <p className="muted">Không có giao dịch chờ đối soát.</p>
-              )}
+              <PageList
+                state={reviewPage}
+                label="tiền cọc cần đối soát"
+                busy={busy}
+              >
+                {reviews.length ? (
+                  reviews.map((b) => <BookingCard b={b} key={b.id} />)
+                ) : (
+                  <p className="muted">Không có giao dịch chờ đối soát.</p>
+                )}
+              </PageList>
             </section>
             <section className="panel">
               <h2>Yêu cầu hỗ trợ / đổi lịch / hủy</h2>
-              {tickets
-                .filter((t) => t.status === "OPEN")
-                .map((t) => (
+              <PageList
+                state={ticketPage}
+                label="yêu cầu hỗ trợ đang mở"
+                busy={busy}
+              >
+                {tickets.map((t) => (
                   <div className="list-row" key={t.id}>
                     <div>
                       <span className="eyebrow">
@@ -197,37 +478,51 @@ export function Admin() {
                         Xem booking →
                       </Link>
                     </div>
-                    <button className="btn small" onClick={() => setResolve(t)}>
+                    <button
+                      className="btn small"
+                      disabled={busy}
+                      aria-label={`Xử lý yêu cầu hỗ trợ ${t.id}`}
+                      onClick={() => {
+                        setResolveBooking(null);
+                        setResolveLoading(true);
+                        setResolve(t);
+                      }}
+                    >
                       Xử lý
                     </button>
                   </div>
                 ))}
-              {!tickets.some((t) => t.status === "OPEN") && (
-                <p className="muted">Không có yêu cầu đang mở.</p>
-              )}
+                {!tickets.some((t) => t.status === "OPEN") && (
+                  <p className="muted">Không có yêu cầu đang mở.</p>
+                )}
+              </PageList>
             </section>
             <section className="panel">
               <h2>Khoản hoàn tiền cần thực hiện</h2>
-              {refunds.map((b) => (
-                <BookingCard b={b} key={b.id} />
-              ))}
-              {!refunds.length && (
-                <p className="muted">Không có khoản hoàn đang chờ.</p>
-              )}
+              <PageList state={refundPage} label="khoản hoàn tiền" busy={busy}>
+                {refunds.map((b) => (
+                  <BookingCard b={b} key={b.id} />
+                ))}
+                {!refunds.length && (
+                  <p className="muted">Không có khoản hoàn đang chờ.</p>
+                )}
+              </PageList>
             </section>
             <section className="panel">
               <h2>Đã quá hạn phản hồi / đặt cọc</h2>
-              {overdue.map((b) => (
-                <BookingCard b={b} key={b.id} />
-              ))}
-              {!overdue.length && (
-                <p className="muted">Không có booking quá hạn.</p>
-              )}
+              <PageList state={overduePage} label="booking quá hạn" busy={busy}>
+                {overdue.map((b) => (
+                  <BookingCard b={b} key={b.id} />
+                ))}
+                {!overdue.length && (
+                  <p className="muted">Không có booking quá hạn.</p>
+                )}
+              </PageList>
             </section>
           </>
         )}
         {tab === "providers" && (
-          <div>
+          <PageList state={providerPage} label="hồ sơ creator" busy={busy}>
             {providers.map((p) => (
               <section className="panel" key={p.id}>
                 <div className="section-title">
@@ -237,11 +532,7 @@ export function Admin() {
                     <p>
                       {p.category} · {p.districts.join(", ")}
                     </p>
-                    <p>
-                      Liên hệ:{" "}
-                      {users.find((u) => u.id === p.owner_id)?.phone ||
-                        "Chưa cập nhật"}
-                    </p>
+                    <ProviderContact ownerId={p.owner_id} />
                   </div>
                 </div>
                 <p>{p.bio}</p>
@@ -339,6 +630,9 @@ export function Admin() {
                     Lưu kết quả
                   </button>
                 </form>
+                <p className="muted">
+                  Tối đa 20 đánh giá mới nhất của hồ sơ trên trang này.
+                </p>
                 {p.reviews.map((r) => (
                   <div className="list-row" key={r.id}>
                     <p>
@@ -372,7 +666,7 @@ export function Admin() {
                 Creator cần đăng nhập và gửi hồ sơ trước.
               </Empty>
             )}
-          </div>
+          </PageList>
         )}
         {tab === "bookings" && (
           <>
@@ -419,72 +713,78 @@ export function Admin() {
                 </section>
               </>
             )}
-            <h2>500 booking gần nhất</h2>
-            <div className="metrics">
-              <div className="metric">
-                <small>Tổng booking trong 500 bản ghi gần nhất</small>
-                <strong>{bookings.length}</strong>
+            <h2>Danh sách booking</h2>
+            <PageList state={bookingPage} label="booking" busy={busy}>
+              <div className="metrics">
+                <div className="metric">
+                  <small>Booking trong trang này</small>
+                  <strong>{bookings.length}</strong>
+                </div>
+                <div className="metric">
+                  <small>Booking hoàn thành trong trang này</small>
+                  <strong>
+                    {bookings.filter((b) => b.status === "COMPLETED").length}
+                  </strong>
+                </div>
+                <div className="metric">
+                  <small>GMV hoàn thành trong trang này</small>
+                  <strong>
+                    {money(
+                      bookings
+                        .filter((b) => b.status === "COMPLETED")
+                        .reduce((a, b) => a + b.price, 0),
+                    )}
+                  </strong>
+                </div>
               </div>
-              <div className="metric">
-                <small>Booking hoàn thành</small>
-                <strong>
-                  {bookings.filter((b) => b.status === "COMPLETED").length}
-                </strong>
-              </div>
-              <div className="metric">
-                <small>GMV hoàn thành</small>
-                <strong>
-                  {money(
-                    bookings
-                      .filter((b) => b.status === "COMPLETED")
-                      .reduce((a, b) => a + b.price, 0),
-                  )}
-                </strong>
-              </div>
-            </div>
-            {bookings.map((b) => (
-              <BookingCard b={b} key={b.id} />
-            ))}
+              {bookings.map((b) => (
+                <BookingCard b={b} key={b.id} />
+              ))}
+            </PageList>
           </>
         )}
         {tab === "users" && (
           <section className="panel table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Tên</th>
-                  <th>Số điện thoại</th>
-                  <th>Vai trò</th>
-                  <th>ID</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.id}>
-                    <td>{u.display_name || "Chưa cập nhật"}</td>
-                    <td>{u.phone}</td>
-                    <td>{u.role}</td>
-                    <td>
-                      <code>{u.id}</code>
-                    </td>
+            <PageList state={userPage} label="người dùng" busy={busy}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tên</th>
+                    <th>Số điện thoại</th>
+                    <th>Vai trò</th>
+                    <th>ID</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {users.map((u) => (
+                    <tr key={u.id}>
+                      <td>{u.display_name || "Chưa cập nhật"}</td>
+                      <td>{u.phone}</td>
+                      <td>{u.role}</td>
+                      <td>
+                        <code>{u.id}</code>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </PageList>
           </section>
         )}
         {tab === "audit" && (
           <section className="panel">
-            <h2>100 thao tác gần nhất</h2>
-            {audit.map((a) => (
-              <div className="list-row" key={a.id}>
-                <div>
-                  <strong>{a.action}</strong>
-                  <p>{a.detail}</p>
+            <h2>Lịch sử thao tác</h2>
+            <PageList state={auditPage} label="lịch sử thao tác" busy={busy}>
+              {audit.map((a) => (
+                <div className="list-row" key={a.id}>
+                  <div>
+                    <strong>{a.action}</strong>
+                    <p>{a.detail}</p>
+                  </div>
+                  <small>{dateTime(a.created_at)}</small>
                 </div>
-                <small>{dateTime(a.created_at)}</small>
-              </div>
-            ))}
+              ))}
+            </PageList>
           </section>
         )}
         {tab === "settings" && (
@@ -516,21 +816,21 @@ export function Admin() {
                 <input
                   name="bank"
                   required
-                  defaultValue={settings?.bank_name}
+                  defaultValue={settings?.bank_name || ""}
                 />
               </Field>
               <Field label="Số tài khoản nhận cọc">
                 <input
                   name="account"
                   required
-                  defaultValue={settings?.bank_account}
+                  defaultValue={settings?.bank_account || ""}
                 />
               </Field>
               <Field label="Tên chủ tài khoản">
                 <input
                   name="holder"
                   required
-                  defaultValue={settings?.bank_holder}
+                  defaultValue={settings?.bank_holder || ""}
                 />
               </Field>
               <Field
@@ -573,13 +873,21 @@ export function Admin() {
           </form>
         )}
         {resolve && (
-          <Modal title="Xử lý yêu cầu hỗ trợ" onClose={() => setResolve(null)}>
+          <Modal
+            title="Xử lý yêu cầu hỗ trợ"
+            onClose={() => {
+              if (!busy) setResolve(null);
+            }}
+          >
             <p>{resolve.message}</p>
+            {resolveLoading && <p role="status">Đang tải thông tin booking…</p>}
+            {resolveError && <Alert>{resolveError}</Alert>}
             {error && <Alert>{error}</Alert>}
             <form
               className="form-grid"
               onSubmit={async (e) => {
                 e.preventDefault();
+                if (resolveLoading || !resolveBooking) return;
                 const f = new FormData(e.currentTarget);
                 const ok = await run(() =>
                   rpc("resolve_support", {
@@ -610,10 +918,8 @@ export function Admin() {
                   type="number"
                   name="refund"
                   min={0}
-                  max={
-                    bookings.find((b) => b.id === resolve.booking_id)
-                      ?.deposit || 0
-                  }
+                  max={resolveBooking?.deposit || 0}
+                  disabled={resolveLoading || !resolveBooking}
                   defaultValue={0}
                 />
               </Field>
@@ -622,7 +928,10 @@ export function Admin() {
                 hiện chuyển tiền. Đổi lịch cần thống nhất hai bên qua hỗ trợ,
                 hủy booking cũ và đặt lịch mới sau khi xử lý tiền.
               </p>
-              <button className="btn" disabled={busy}>
+              <button
+                className="btn"
+                disabled={busy || resolveLoading || !resolveBooking}
+              >
                 Ghi nhận xử lý
               </button>
             </form>

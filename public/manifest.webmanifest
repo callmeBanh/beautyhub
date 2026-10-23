@@ -1,0 +1,21 @@
+{
+  "id": "/",
+  "name": "BeautyHub — Creator cho khoảnh khắc của bạn",
+  "short_name": "BeautyHub",
+  "description": "Tìm photographer, makeup artist và theo dõi lịch hẹn của bạn tại TP.HCM.",
+  "lang": "vi",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fdfbf7",
+  "theme_color": "#fdfbf7",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Khám phá creator", "url": "/explore", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Lịch hẹn của tôi", "url": "/bookings", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

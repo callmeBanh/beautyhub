@@ -1,4 +1,12 @@
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  useRef,
+  useId,
+  cloneElement,
+  isValidElement,
+  type ReactNode,
+} from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowUpRight,
@@ -9,6 +17,7 @@ import {
   Star,
 } from "lucide-react";
 import { labels, money, minPrice, type Provider } from "./domain";
+import { FavoriteButton } from "./FavoriteButton";
 export function Empty({
   title,
   children,
@@ -55,72 +64,99 @@ export function Field({
   children: ReactNode;
   hint?: string;
 }) {
+  const generated = useId();
+  const valid = isValidElement<{ id?: string; "aria-describedby"?: string }>(
+    children,
+  );
+  const id = valid && children.props.id ? children.props.id : generated;
+  const hintId = `${generated}-hint`;
+  const control = valid
+    ? cloneElement(children, {
+        id,
+        ...(hint
+          ? {
+              "aria-describedby": [children.props["aria-describedby"], hintId]
+                .filter(Boolean)
+                .join(" "),
+            }
+          : {}),
+      })
+    : children;
   return (
-    <label className="field">
-      <span>{label}</span>
-      {children}
-      {hint && <small>{hint}</small>}
-    </label>
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      {control}
+      {hint && <small id={hintId}>{hint}</small>}
+    </div>
   );
 }
 export function ProviderCard({ p }: { p: Provider }) {
   const reviews = p.reviews.filter((r) => !r.hidden);
-  const rating = reviews.length
-    ? (
-        reviews.reduce((a, r) => a + Number(r.rating), 0) / reviews.length
-      ).toFixed(1)
-    : null;
+  const count = p.review_count ?? reviews.length;
+  const rating =
+    p.rating_average !== undefined && count
+      ? Number(p.rating_average).toFixed(1)
+      : reviews.length
+        ? (
+            reviews.reduce((a, r) => a + Number(r.rating), 0) / reviews.length
+          ).toFixed(1)
+        : null;
   return (
-    <Link className="creator-card" to={`/creators/${p.slug}`}>
-      <div className="creator-image">
-        {p.portfolio_assets.find((a) => a.approved && a.url) ? (
-          <img
-            loading="lazy"
-            src={p.portfolio_assets.find((a) => a.approved && a.url)!.url}
-            alt={`Tác phẩm của ${p.name}`}
-          />
-        ) : (
-          <div className="image-empty">
-            <Camera />
-          </div>
-        )}
-        <span className="verified">
-          <ShieldCheck size={13} />
-          BeautyHub xác minh
-        </span>
-        <span className="card-arrow">
-          <ArrowUpRight size={18} />
-        </span>
-      </div>
-      <div className="creator-meta">
-        <h3>{p.name}</h3>
-        <span>
-          {rating ? (
-            <>
-              <Star size={12} />
-              {rating} ({reviews.length})
-            </>
+    <article className="creator-card-shell">
+      <Link className="creator-card" to={`/creators/${p.slug}`}>
+        <div className="creator-image">
+          {p.portfolio_assets.find((a) => a.approved && a.url) ? (
+            <img
+              loading="lazy"
+              src={p.portfolio_assets.find((a) => a.approved && a.url)!.url}
+              alt={`Tác phẩm của ${p.name}`}
+            />
           ) : (
-            "Chưa có đánh giá"
+            <div className="image-empty">
+              <Camera />
+            </div>
           )}
-        </span>
-      </div>
-      <p>
-        {p.category} · {p.districts.slice(0, 2).join(", ")}
-      </p>
-      <small>{p.completed_count || 0} booking đã hoàn thành</small>
-      <div className="tags">
-        {p.styles.map((s) => (
-          <span key={s}>{s}</span>
-        ))}
-      </div>
-      <div className="price-line">
-        Từ{" "}
-        <strong>
-          {Number.isFinite(minPrice(p)) ? money(minPrice(p)) : "Đang cập nhật"}
-        </strong>
-      </div>
-    </Link>
+          <span className="verified">
+            <ShieldCheck size={13} />
+            BeautyHub xác minh
+          </span>
+          <span className="card-arrow">
+            <ArrowUpRight size={18} />
+          </span>
+        </div>
+        <div className="creator-meta">
+          <h3>{p.name}</h3>
+          <span>
+            {rating ? (
+              <>
+                <Star size={12} />
+                {rating} ({count})
+              </>
+            ) : (
+              "Chưa có đánh giá"
+            )}
+          </span>
+        </div>
+        <p>
+          {p.category} · {p.districts.slice(0, 2).join(", ")}
+        </p>
+        <small>{p.completed_count || 0} booking đã hoàn thành</small>
+        <div className="tags">
+          {p.styles.map((s) => (
+            <span key={s}>{s}</span>
+          ))}
+        </div>
+        <div className="price-line">
+          Từ{" "}
+          <strong>
+            {Number.isFinite(minPrice(p))
+              ? money(minPrice(p))
+              : "Đang cập nhật"}
+          </strong>
+        </div>
+      </Link>
+      <FavoriteButton provider={p} />
+    </article>
   );
 }
 export function Modal({
@@ -132,6 +168,8 @@ export function Modal({
   children: ReactNode;
   onClose: () => void;
 }) {
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const old = document.body.style.overflow;
@@ -139,10 +177,10 @@ export function Modal({
     const el = document.getElementById("active-dialog");
     el?.focus();
     function key(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") closeRef.current();
       if (e.key === "Tab") {
         const focusable = el?.querySelectorAll<HTMLElement>(
-          "button,input,select,textarea,a[href]",
+          "button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href]",
         );
         if (!focusable?.length) return;
         const first = focusable[0],
@@ -153,7 +191,10 @@ export function Modal({
         ) {
           e.preventDefault();
           last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
+        } else if (
+          !e.shiftKey &&
+          (document.activeElement === last || document.activeElement === el)
+        ) {
           e.preventDefault();
           first.focus();
         }

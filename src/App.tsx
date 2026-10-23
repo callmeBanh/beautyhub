@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
   Link,
   NavLink,
@@ -25,12 +25,30 @@ import { useApp } from "./context";
 import { dateTime, errorText, labels, safeNext, type Notice } from "./domain";
 import { Alert, Empty, Field, Loading, Modal } from "./ui";
 import { Home, Explore, Creator } from "./Discovery";
-import { Checkout, BookingDetail, Bookings } from "./Bookings";
-import { Studio } from "./Studio";
-import { Admin } from "./Admin";
+const Checkout = lazy(() =>
+  import("./Bookings").then((module) => ({ default: module.Checkout })),
+);
+const BookingDetail = lazy(() =>
+  import("./Bookings").then((module) => ({ default: module.BookingDetail })),
+);
+const Bookings = lazy(() =>
+  import("./Bookings").then((module) => ({ default: module.Bookings })),
+);
+const Studio = lazy(() =>
+  import("./Studio").then((module) => ({ default: module.Studio })),
+);
+const Admin = lazy(() =>
+  import("./Admin").then((module) => ({ default: module.Admin })),
+);
+import { InstallPage, UpdateNotice } from "./pwa";
+import { Saved } from "./Saved";
+import { MobileNav } from "./MobileNav";
+import { Notifications, useUnreadNotifications } from "./Notifications";
+import { site } from "./site";
 
 function Header() {
   const { user, profile, toast } = useApp();
+  const unread = useUnreadNotifications();
   const [menu, setMenu] = useState(false);
   const location = useLocation();
   useEffect(() => setMenu(false), [location]);
@@ -50,9 +68,16 @@ function Header() {
             <Link
               className="icon-button"
               to="/notifications"
-              aria-label="Thông báo"
+              aria-label={
+                unread ? `Thông báo: ${unread} chưa đọc` : "Thông báo"
+              }
             >
               <Bell size={18} />
+              {unread > 0 && (
+                <span className="unread-count">
+                  {unread > 99 ? "99+" : unread}
+                </span>
+              )}
             </Link>
             {profile?.role === "ADMIN" && (
               <Link className="btn small ghost desktop" to="/admin">
@@ -98,6 +123,7 @@ function Footer() {
       </div>
       <div>
         <Link to="/how-it-works">Cách đặt lịch</Link>
+        <Link to="/install">Cài BeautyHub</Link>
         <Link to="/policies">Chính sách & quyền riêng tư</Link>
         <Link to="/studio">Dành cho creator</Link>
       </div>
@@ -207,6 +233,16 @@ function Callback() {
   const { user, authLoading, error } = useApp();
   const [params] = useSearchParams();
   const message = params.get("error_description");
+  if (!configured)
+    return (
+      <div className="page">
+        <Alert>
+          Đăng nhập chưa được kết nối. Bạn có thể tiếp tục khám phá giao diện và
+          cài ứng dụng; đăng nhập sẽ mở khi backend được cấu hình.
+        </Alert>
+        <Link to="/">Về trang chủ</Link>
+      </div>
+    );
   if (message || error)
     return (
       <div className="page">
@@ -309,82 +345,23 @@ function Account() {
     </div>
   );
 }
-function Notifications() {
-  const { user } = useApp();
-  const [items, setItems] = useState<Notice[]>([]),
-    [error, setError] = useState(""),
-    [loading, setLoading] = useState(true);
-  useEffect(() => {
-    if (!user) return;
-    void client()
-      .from("notifications")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(100)
-      .then(({ data, error: e }) => {
-        if (e) setError(e.message);
-        else setItems(data || []);
-        setLoading(false);
-      });
-  }, [user]);
-  return (
-    <div className="page narrow">
-      <span className="eyebrow">CẬP NHẬT</span>
-      <h1>Thông báo của bạn</h1>
-      {error && <Alert>{error}</Alert>}
-      {loading ? (
-        <Loading />
-      ) : items.length ? (
-        <>
-          <button
-            className="text-button"
-            onClick={async () => {
-              try {
-                await rpc("mark_notifications_read");
-                setItems(
-                  items.map((n) => ({
-                    ...n,
-                    read_at: new Date().toISOString(),
-                  })),
-                );
-              } catch (e) {
-                setError(errorText(e));
-              }
-            }}
-          >
-            Đánh dấu đã đọc
-          </button>
-          <div className="notification-list">
-            {items.map((n) => (
-              <Link
-                className={n.read_at ? "notice" : "notice unread"}
-                to={n.booking_id ? `/bookings/${n.booking_id}` : "/studio"}
-                key={n.id}
-              >
-                <Bell size={18} />
-                <div>
-                  <strong>{labels[n.text] || n.text}</strong>
-                  <small>{dateTime(n.created_at)}</small>
-                </div>
-                <ArrowRight size={16} />
-              </Link>
-            ))}
-          </div>
-        </>
-      ) : (
-        <Empty title="Bạn chưa có thông báo">
-          Các cập nhật về booking sẽ xuất hiện tại đây.
-        </Empty>
-      )}
-    </div>
-  );
-}
 function Policies() {
   const { settings } = useApp();
+  const support = settings?.support_url?.startsWith("https://")
+    ? settings.support_url
+    : site.support;
   return (
     <div className="page narrow prose">
       <span className="eyebrow">MINH BẠCH TỪ ĐẦU</span>
       <h1>Chính sách & hỗ trợ</h1>
+      {site.operator && (
+        <p>
+          Đơn vị / người vận hành: <strong>{site.operator}</strong>
+        </p>
+      )}
+      {site.policyDate && (
+        <p className="muted">Cập nhật chính sách: {site.policyDate}</p>
+      )}
       <h2>Đặt lịch và tiền cọc</h2>
       <p>
         Yêu cầu đặt lịch được giữ tối đa 12 giờ để creator phản hồi. Sau khi
@@ -422,21 +399,40 @@ function Policies() {
         BeautyHub sử dụng tên, số điện thoại, địa điểm và thông tin booking để
         thực hiện dịch vụ. Khách, creator liên quan và người vận hành có quyền
         xem dữ liệu cần thiết cho giao dịch. Dữ liệu tài khoản được xử lý qua
-        Supabase; website được triển khai trên Cloudflare khi mở beta.
+        Supabase khi backend được kết nối; nhà cung cấp hosting tùy môi trường
+        triển khai.
       </p>
       <p>
         Không nhập thông tin thẻ, mật khẩu ngân hàng hoặc giấy tờ tùy thân vào
         ghi chú booking. Bạn có thể yêu cầu chỉnh sửa hoặc xóa dữ liệu qua kênh
         hỗ trợ; dữ liệu giao dịch cần lưu giữ sẽ được giải thích khi xử lý.
       </p>
+      <p>
+        Đánh giá và tên hiển thị của người đánh giá được công khai trên hồ sơ
+        creator. Không ghi địa chỉ, số tài khoản hoặc thông tin riêng tư vào
+        đánh giá. Nháp booking được lưu trong phiên tab để khôi phục khi lỗi
+        mạng, và được xóa khi gửi thành công hoặc đăng xuất. Nếu trình duyệt
+        chặn lưu nháp, bạn vẫn có thể gửi yêu cầu nhưng cần nhập lại khi tải lại
+        trang.
+      </p>
+      {site.retention && (
+        <>
+          <h2>Thời gian lưu dữ liệu</h2>
+          <p className="preserve">{site.retention}</p>
+        </>
+      )}
+      {site.privacy && (
+        <p>
+          <a href={site.privacy} target="_blank" rel="noreferrer">
+            Gửi yêu cầu về dữ liệu cá nhân
+          </a>
+          . Người vận hành sẽ xác minh chủ tài khoản trước khi cung cấp hoặc xử
+          lý dữ liệu.
+        </p>
+      )}
       <h2>Liên hệ</h2>
-      {settings?.support_url?.startsWith("https://") ? (
-        <a
-          className="btn"
-          href={settings.support_url}
-          target="_blank"
-          rel="noreferrer"
-        >
+      {support ? (
+        <a className="btn" href={support} target="_blank" rel="noreferrer">
           Mở kênh hỗ trợ <ArrowRight size={16} />
         </a>
       ) : (
@@ -533,7 +529,12 @@ function Setup() {
 }
 export default function App() {
   const location = useLocation();
-  const { error, user } = useApp();
+  const { error, user, refresh, providers } = useApp();
+  const visibleProvider = providers.find(
+    (provider) =>
+      `/creators/${provider.slug}` === location.pathname &&
+      provider.status === "APPROVED",
+  );
   useEffect(() => {
     if (!user) return;
     const path = location.pathname;
@@ -544,8 +545,18 @@ export default function App() {
   const [offline, setOffline] = useState(!navigator.onLine);
   useEffect(() => {
     window.scrollTo(0, 0);
-    document.title = "BeautyHub — Đúng người, đúng khoảnh khắc";
-  }, [location.pathname]);
+    document.title = visibleProvider
+      ? `${visibleProvider.name} — ${visibleProvider.category} | BeautyHub`
+      : "BeautyHub — Đúng người, đúng khoảnh khắc";
+    document
+      .querySelector('meta[name="description"]')
+      ?.setAttribute(
+        "content",
+        visibleProvider
+          ? `${visibleProvider.name}: ${visibleProvider.bio}`.slice(0, 160)
+          : "BeautyHub — tìm photographer và makeup artist tại TP.HCM. Xem tác phẩm, gói dịch vụ và đặt lịch rõ ràng.",
+      );
+  }, [location.pathname, visibleProvider?.name, visibleProvider?.bio]);
   useEffect(() => {
     const on = () => setOffline(!navigator.onLine);
     window.addEventListener("online", on);
@@ -561,6 +572,7 @@ export default function App() {
         Đến nội dung chính
       </a>
       <Header />
+      <UpdateNotice />
       {offline && (
         <div className="network-banner" role="status">
           Bạn đang ngoại tuyến. Vui lòng kết nối lại trước khi gửi thay đổi.
@@ -568,88 +580,103 @@ export default function App() {
       )}
       {error && (
         <div className="network-banner" role="alert">
-          Không tải được dữ liệu. Hãy tải lại trang hoặc kiểm tra kết nối.
+          Không tải được dữ liệu. Hãy kiểm tra kết nối và thử lại.{" "}
+          <button className="text-button" onClick={() => void refresh()}>
+            Thử lại
+          </button>
         </div>
       )}
       <main id="main">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/explore" element={<Explore />} />
-          <Route path="/creators/:slug" element={<Creator />} />
-          <Route
-            path="/checkout/:packageId"
-            element={
-              <RequireUser>
-                <Checkout />
-              </RequireUser>
-            }
-          />
-          <Route
-            path="/bookings"
-            element={
-              <RequireUser>
-                <Bookings />
-              </RequireUser>
-            }
-          />
-          <Route
-            path="/bookings/:id"
-            element={
-              <RequireUser>
-                <BookingDetail />
-              </RequireUser>
-            }
-          />
-          <Route path="/login" element={<Login />} />
-          <Route path="/auth/callback" element={<Callback />} />
-          <Route
-            path="/account"
-            element={
-              <RequireUser>
-                <Account />
-              </RequireUser>
-            }
-          />
-          <Route
-            path="/notifications"
-            element={
-              <RequireUser>
-                <Notifications />
-              </RequireUser>
-            }
-          />
-          <Route
-            path="/studio"
-            element={
-              <RequireUser>
-                <Studio />
-              </RequireUser>
-            }
-          />
-          <Route
-            path="/admin"
-            element={
-              <RequireUser admin>
-                <Admin />
-              </RequireUser>
-            }
-          />
-          <Route path="/how-it-works" element={<How />} />
-          <Route path="/policies" element={<Policies />} />
-          <Route path="/setup" element={<Setup />} />
-          <Route
-            path="*"
-            element={
-              <div className="page">
-                <Empty title="Trang này không tồn tại">
-                  <Link to="/">Về trang chủ</Link>
-                </Empty>
-              </div>
-            }
-          />
-        </Routes>
+        <Suspense fallback={<Loading />}>
+          <Routes>
+            <Route path="/install" element={<InstallPage />} />
+            <Route
+              path="/saved"
+              element={
+                <RequireUser>
+                  <Saved />
+                </RequireUser>
+              }
+            />
+            <Route path="/" element={<Home />} />
+            <Route path="/explore" element={<Explore />} />
+            <Route path="/creators/:slug" element={<Creator />} />
+            <Route
+              path="/checkout/:packageId"
+              element={
+                <RequireUser>
+                  <Checkout key={location.pathname + location.search} />
+                </RequireUser>
+              }
+            />
+            <Route
+              path="/bookings"
+              element={
+                <RequireUser>
+                  <Bookings />
+                </RequireUser>
+              }
+            />
+            <Route
+              path="/bookings/:id"
+              element={
+                <RequireUser>
+                  <BookingDetail key={location.pathname} />
+                </RequireUser>
+              }
+            />
+            <Route path="/login" element={<Login />} />
+            <Route path="/auth/callback" element={<Callback />} />
+            <Route
+              path="/account"
+              element={
+                <RequireUser>
+                  <Account />
+                </RequireUser>
+              }
+            />
+            <Route
+              path="/notifications"
+              element={
+                <RequireUser>
+                  <Notifications />
+                </RequireUser>
+              }
+            />
+            <Route
+              path="/studio"
+              element={
+                <RequireUser>
+                  <Studio />
+                </RequireUser>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <RequireUser admin>
+                  <Admin />
+                </RequireUser>
+              }
+            />
+            <Route path="/how-it-works" element={<How />} />
+            <Route path="/policies" element={<Policies />} />
+            <Route path="/setup" element={<Setup />} />
+            <Route
+              path="*"
+              element={
+                <div className="page">
+                  <Empty title="Trang này không tồn tại">
+                    <Link to="/">Về trang chủ</Link>
+                  </Empty>
+                </div>
+              }
+            />
+          </Routes>
+        </Suspense>
       </main>
       <Footer />
+      <MobileNav />
     </>
   );
 }

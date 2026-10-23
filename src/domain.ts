@@ -56,6 +56,7 @@ export const labels: Record<string, string> = {
   PAID: "Đã nhận cọc",
   REFUND_PENDING: "Chờ hoàn tiền",
   REFUNDED: "Đã hoàn tiền",
+  LATE_DEPOSIT: "Đã đối soát cọc chuyển muộn, chờ hoàn",
   DRAFT: "Bản nháp",
   PENDING: "Chờ duyệt",
   APPROVED: "Đã xác minh",
@@ -108,6 +109,8 @@ export type Review = {
   created_at: string;
 };
 export type Provider = {
+  rating_average?: number;
+  review_count?: number;
   completed_count?: number;
   id: string;
   owner_id: string;
@@ -124,9 +127,9 @@ export type Provider = {
 };
 export type Settings = {
   ready: boolean;
-  bank_name: string;
-  bank_account: string;
-  bank_holder: string;
+  bank_name?: string;
+  bank_account?: string;
+  bank_holder?: string;
   support_url: string;
   cancellation_policy: string;
   policy_version: number;
@@ -217,10 +220,12 @@ export function localDate(offset = 0) {
 export function safeNext(value: string | null) {
   return value?.startsWith("/") &&
     !value.startsWith("//") &&
+    !/[\u0000-\u0020\u007f]/.test(value) &&
     !value.includes("\\")
     ? value
     : "/bookings";
 }
+export { isPublicKey as isPublicSupabaseKey } from "../scripts/public-key.mjs";
 export function effectiveStatus(b: Booking, now = Date.now()): Status {
   return ["REQUESTED", "AWAITING_DEPOSIT"].includes(b.status) &&
     b.hold_until &&

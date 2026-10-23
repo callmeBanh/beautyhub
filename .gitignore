@@ -4,6 +4,11 @@ dist/
 .env.*
 !.env.example
 coverage/
+test-results/
+test-results-pwa/
+playwright-report/
+supabase/generated/
+backend-status.json
 *.local
 .supabase/
 supabase/.temp/
