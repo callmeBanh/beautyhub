@@ -12,18 +12,23 @@ import {
 import {
   ArrowRight,
   Bell,
+  CalendarDays,
   Camera,
   Check,
+  Compass,
   LogOut,
   Menu,
+  MessageCircle,
+  Search,
   ShieldCheck,
   Sparkles,
+  User as UserIcon,
   X,
 } from "lucide-react";
 import { client, configured, db, rpc, track } from "./api";
 import { useApp } from "./context";
 import { dateTime, errorText, labels, safeNext, type Notice } from "./domain";
-import { Alert, Empty, Field, Loading, Modal } from "./ui";
+import { Alert, Empty, Field, FloatingContact, Loading, Modal } from "./ui";
 import { Home, Explore, Creator } from "./Discovery";
 import { Checkout, BookingDetail, Bookings } from "./Bookings";
 import { Studio } from "./Studio";
@@ -90,29 +95,119 @@ function Header() {
 }
 function Footer() {
   return (
-    <footer>
-      <div>
-        <Link className="brand" to="/" aria-label="BeautyHub trang chủ">
-          <img src="/assets/brand-mark.png" alt="" className="brand-icon" width="32" height="32" />
-          beautyhub
-        </Link>
-        <p>Nền tảng kết nối và đặt lịch Photographer & Makeup Artist tại TP.HCM.</p>
+    <footer className="footer-luxury">
+      <div className="footer-top-grid">
+        <div className="footer-brand-col">
+          <Link className="brand" to="/" aria-label="BeautyHub trang chủ">
+            <img
+              src="/assets/brand-mark.png"
+              alt=""
+              className="brand-icon"
+              width="36"
+              height="36"
+            />
+            <span className="brand-text">beautyhub</span>
+          </Link>
+          <p className="footer-tagline">
+            Nền tảng tuyển chọn và kết nối Photographer & Makeup Artist chuyên
+            nghiệp tại TP.HCM.
+          </p>
+          <p className="footer-features">
+            ✓ 100% Tác phẩm xác minh · ✓ Cọc 30% VietQR an toàn · ✓ Hoàn cọc minh bạch.
+          </p>
+          <div className="footer-socials">
+            <a href="https://instagram.com" target="_blank" rel="noreferrer" aria-label="Instagram">
+              Instagram
+            </a>
+            <span className="sep">•</span>
+            <a href="https://tiktok.com" target="_blank" rel="noreferrer" aria-label="TikTok">
+              TikTok
+            </a>
+            <span className="sep">•</span>
+            <a href="https://zalo.me/beautyhub" target="_blank" rel="noreferrer" aria-label="Zalo">
+              Zalo Official
+            </a>
+          </div>
+        </div>
+
+        <div className="footer-links-col">
+          <h4>Khám phá & Dịch vụ</h4>
+          <Link to="/explore?category=Photographer">Nhiếp ảnh gia TP.HCM</Link>
+          <Link to="/explore?category=Makeup+Artist">Chuyên viên trang điểm</Link>
+          <Link to="/explore?style=Korean">Layout tone Hàn Quốc</Link>
+          <Link to="/explore?style=Cinematic">Phong cách Cinematic Film</Link>
+          <Link to="/explore">Tất cả concept thịnh hành</Link>
+        </div>
+
+        <div className="footer-links-col">
+          <h4>Quy trình & Hỗ trợ</h4>
+          <Link to="/how-it-works">Cách thức đặt lịch 4 bước</Link>
+          <Link to="/policies">Chính sách cọc & Hoàn tiền 100%</Link>
+          <Link to="/studio">Không gian dành cho Creator</Link>
+          <a href="https://zalo.me/beautyhub" target="_blank" rel="noreferrer">
+            Hỗ trợ trực tuyến 24/7 (Zalo)
+          </a>
+        </div>
+      </div>
+
+      <div className="footer-bottom-bar">
         <small className="footer-legal">
-          © 2026 BeautyHub Vietnam · Bảo vệ dữ liệu theo Nghị định 13/2023/NĐ-CP.
+          © 2026 BeautyHub Vietnam · Nền tảng kết nối sáng tạo & làm đẹp uy tín
+          tại TP.HCM. Bảo vệ dữ liệu theo Nghị định 13/2023/NĐ-CP.
+        </small>
+        <small className="footer-meta">
+          TP.HCM · Version 1.0 Production · An tâm trải nghiệm
         </small>
       </div>
-      <div>
-        <Link to="/how-it-works">Cách đặt lịch</Link>
-        <Link to="/policies">Chính sách & quyền riêng tư</Link>
-        <Link to="/studio">Dành cho creator</Link>
-        <a href="https://zalo.me/beautyhub" target="_blank" rel="noreferrer">
-          Hỗ trợ trực tuyến (Zalo)
-        </a>
-      </div>
-      <small>TP.HCM · Version 1.0 Production</small>
     </footer>
   );
 }
+
+function MobileBottomNav() {
+  const { user } = useApp();
+  return (
+    <nav className="mobile-bottom-nav" aria-label="Điều hướng di động">
+      <NavLink
+        to="/"
+        end
+        className={({ isActive }) =>
+          isActive ? "bottom-nav-item active" : "bottom-nav-item"
+        }
+      >
+        <Compass size={20} />
+        <span>Trang chủ</span>
+      </NavLink>
+      <NavLink
+        to="/explore"
+        className={({ isActive }) =>
+          isActive ? "bottom-nav-item active" : "bottom-nav-item"
+        }
+      >
+        <Search size={20} />
+        <span>Khám phá</span>
+      </NavLink>
+      <NavLink
+        to="/bookings"
+        className={({ isActive }) =>
+          isActive ? "bottom-nav-item active" : "bottom-nav-item"
+        }
+      >
+        <CalendarDays size={20} />
+        <span>Lịch hẹn</span>
+      </NavLink>
+      <NavLink
+        to={user ? "/account" : "/login"}
+        className={({ isActive }) =>
+          isActive ? "bottom-nav-item active" : "bottom-nav-item"
+        }
+      >
+        <UserIcon size={20} />
+        <span>{user ? "Tài khoản" : "Đăng nhập"}</span>
+      </NavLink>
+    </nav>
+  );
+}
+
 export function RequireUser({
   children,
   admin = false,
@@ -599,7 +694,7 @@ function Setup() {
 }
 export default function App() {
   const location = useLocation();
-  const { error, user } = useApp();
+  const { error, user, settings } = useApp();
   useEffect(() => {
     if (!user) return;
     const path = location.pathname;
@@ -716,6 +811,8 @@ export default function App() {
         </Routes>
       </main>
       <Footer />
+      <FloatingContact supportUrl={settings?.support_url} />
+      <MobileBottomNav />
     </>
   );
 }

@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import type { Provider } from "./domain";
+import { enrichProviders, type Provider } from "./domain";
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
 export const configured = Boolean(url && key && /^https:\/\//.test(url));
@@ -56,7 +56,7 @@ export async function listProviders(): Promise<Provider[]> {
       a.url = urls?.find((u) => u.path === a.path)?.signedUrl || undefined;
     });
   }
-  return providers;
+  return enrichProviders(providers);
 }
 export async function track(event: string) {
   if (!db) return;
