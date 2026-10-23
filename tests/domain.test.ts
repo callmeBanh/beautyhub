@@ -3,14 +3,27 @@ import {
   safeNext,
   effectiveStatus,
   filterProviders,
+  isPublicSupabaseKey,
   type Booking,
   type Provider,
 } from "../src/domain";
 describe("customer journey", () => {
+  it("only accepts public Supabase keys for a frontend bundle", () => {
+    const jwt = (role: string) =>
+      `header.${btoa(JSON.stringify({ role }))}.signature`;
+    expect(isPublicSupabaseKey(jwt("anon"))).toBe(true);
+    expect(isPublicSupabaseKey("sb_publishable_test")).toBe(true);
+    expect(isPublicSupabaseKey(jwt("service_role"))).toBe(false);
+    expect(isPublicSupabaseKey("sb_secret_do-not-bundle")).toBe(false);
+    expect(isPublicSupabaseKey("invalid")).toBe(false);
+  });
   it("rejects external OAuth return paths", () => {
     expect(safeNext("//evil.example")).toBe("/bookings");
     expect(safeNext("/\\evil.example")).toBe("/bookings");
     expect(safeNext("https://evil.example")).toBe("/bookings");
+    expect(safeNext("/\n/evil.example")).toBe("/bookings");
+    expect(safeNext("/\t/evil.example")).toBe("/bookings");
+    expect(safeNext("/\r/evil.example")).toBe("/bookings");
     expect(safeNext("/checkout/package?start=123")).toBe(
       "/checkout/package?start=123",
     );

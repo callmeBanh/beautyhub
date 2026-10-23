@@ -1,8 +1,8 @@
-# BeautyHub — web-first private beta
+# BeautyHub — Web + PWA cho trải nghiệm khởi nghiệp
 
 React + TypeScript + Vite; Supabase PostgreSQL/Auth/Storage; deploy static lên Cloudflare Pages. Không còn công tắc giả lập vai trò, JSON database hoặc nút khách tự xác nhận đã thanh toán.
 
-**Trạng thái:** mã nguồn và kiểm thử cục bộ đã có; chưa kết nối Supabase, chưa triển khai hosting, chưa nghiệm thu Google OAuth/ngân hàng thật. Khi thiếu cấu hình, web hiển thị trạng thái chuẩn bị, không tự sinh creator hoặc giao dịch giả. Không được coi bản này đã mở bán.
+**Phạm vi hiện tại:** sản phẩm môn học gồm web và PWA cài lên điện thoại. Supabase được để lại cho bước sau theo yêu cầu của chủ dự án; không thao tác project chưa thuộc quyền sở hữu. Frontend, migration và kiểm thử đã có; chưa nghiệm thu đăng nhập hoặc ngân hàng thật. Khi thiếu cấu hình, web hiển thị trạng thái chuẩn bị, không tự sinh creator hoặc giao dịch giả. Không được coi bản này đã mở bán.
 
 ## Chạy tại máy
 
@@ -13,14 +13,23 @@ npm ci
 npm run dev
 npm test
 npm run build
+npx playwright install chromium
+npm run test:e2e
+npm run test:pwa
 ```
 
-Mở http://127.0.0.1:4173. Tạo `.env` từ `.env.example`, điền URL Supabase HTTPS và publishable/anon key. Chỉ hai giá trị public này được đưa vào frontend. **Không dùng service-role/secret key hoặc mật khẩu database trong biến `VITE_*`.** Khởi động lại Vite sau khi đổi env.
+Mở http://127.0.0.1:4173. Mặc định `.env.example` đặt `VITE_BACKEND_ENABLED=false` để xem giao diện mà không truy cập backend. Khi nhóm có project Supabase riêng, điền URL HTTPS và publishable/anon key rồi đổi `VITE_BACKEND_ENABLED=true`. Chỉ hai giá trị public này được đưa vào frontend. **Không dùng service-role/secret key hoặc mật khẩu database trong biến `VITE_*`.** Khởi động lại Vite sau khi đổi env.
+
+## PWA và hướng dẫn môn học
+
+`npm run build` tạo icon, bundle và service worker có phiên bản. Chạy `npm run preview -- --port 4180`, mở `http://127.0.0.1:4180/install` để kiểm tra bản cài; service worker không chạy trong dev. Trên hosting dùng HTTPS và cấu hình headers của Cloudflare/Vercel. PWA có màn hình kết nối lại khi mất mạng, không gửi booking hoặc thanh toán ngầm. Bản cập nhật chỉ tải lại khi người dùng chọn.
+
+Xem [CLASSROOM_GUIDE.md](CLASSROOM_GUIDE.md) cho các phần xem được ngay, các phần chờ backend và cách trình bày trung thực trước thầy cô. Phạm vi lần này không bao gồm thủ tục doanh nghiệp hoặc mở bán thương mại; repo không tuyên bố đã đủ điều kiện mở bán thương mại.
 
 ## Thiết lập Supabase và Google
 
 1. Chủ dự án tạo Supabase Free project, chọn region phù hợp (ví dụ Singapore), bật bảo vệ tài khoản quản trị. Không cần nhập thông tin thẻ cho mã nguồn này.
-2. Trong SQL Editor của project **mới**, chạy lần lượt `supabase/migrations/202610050001_beta.sql`, `202610050002_operations.sql`, `202610210001_hardening.sql` (bảng `settings` chỉ admin đọc; web công khai dùng `public_settings()`; mã đối soát/hoàn tiền không dùng lại được; creator xóa được ảnh portfolio). Không chạy migration khởi tạo lên database đang có dữ liệu cùng tên. Schema `private` không được thêm vào exposed API schemas.
+2. Khi có project do nhóm sở hữu, áp dụng lần lượt `202610050001_beta.sql`, `202610050002_operations.sql`, `202610210001_hardening.sql`, `202610220001_audit.sql`, `202610220002_product.sql` trong `supabase/migrations`. Không chạy lại migration khởi tạo hoặc đoán trạng thái DB. Có thể dùng `npm run db:bundle` để chuẩn bị script cho project mới hoặc DB có đúng hai migration gốc; xem [CLASSROOM_GUIDE.md](CLASSROOM_GUIDE.md). Script chỉ tạo file, không tự kết nối/migrate. Schema `private` không được exposed qua API.
 3. Chạy `supabase/enable-cron.sql` bằng SQL Editor để hết hạn giữ lịch và nhắc hẹn mỗi phút; kiểm tra trạng thái trong Integrations → Cron. Tác vụ cũng giữ lịch sử cron tối đa 7 ngày. Hàm nghiệp vụ đã được thử bằng PostgreSQL nhúng; scheduler Supabase cần kiểm tra trên project thật.
 4. Bật Google provider trong Supabase Auth. Chủ tài khoản cấu hình Google OAuth client, consent screen và callback `https://<project-ref>.supabase.co/auth/v1/callback`. Client secret chỉ nhập trong dashboard Supabase.
 5. Supabase Auth → URL Configuration: Site URL là URL production. Redirect allowlist gồm URL callback web thực tế (có query `next`): `http://127.0.0.1:4173/auth/callback**` cho local và `https://<site>.pages.dev/auth/callback**` cho production. Không allowlist wildcard mọi domain. Khi mở khách thật, Google consent screen phải cho phép khách ngoài danh sách test.
@@ -35,9 +44,11 @@ update public.profiles set role='ADMIN' where id='<verified-auth-user-uuid>'::uu
 
 ## Deploy Cloudflare Pages Free
 
-Chủ tài khoản tạo Pages project từ Git repository chứa mã nguồn này (workspace hiện chưa tự tạo repository hoặc push lên tài khoản nào). Build `npm run build`, output `dist`, Node 22.12+. Khai báo hai biến env như trên **trước khi build**. Có thể upload `dist` bằng dashboard sau khi build với env production.
+Khi muốn chia sẻ bài học qua HTTPS, chủ tài khoản tạo Pages project từ Git repository chứa mã nguồn này. Build `npm run build`, output `dist`, Node 22.12+. Khai báo hai biến env như trên **trước khi build**. Có thể upload `dist` bằng dashboard sau khi build với env production.
 
-`public/_redirects` hỗ trợ deep link SPA; `public/_headers` cung cấp CSP và security headers. CSP hiện cho phép Supabase hostname chuẩn `*.supabase.co`; nếu dùng custom domain, cập nhật CSP có chủ đích. Dùng URL `pages.dev` nếu không muốn mua domain. Không bật cache API hoặc service-worker cache thông tin riêng tư. Deploy frontend trước khi mở booking và nghiệm thu URL callback thật.
+`public/_redirects` hỗ trợ deep link SPA; `public/_headers` cung cấp CSP và security headers. CSP hiện cho phép Supabase hostname chuẩn `*.supabase.co`; nếu dùng custom domain, cập nhật CSP có chủ đích. Dùng URL `pages.dev` nếu không muốn mua domain. Service worker chỉ cache allowlist tài nguyên giao diện công khai; không cache API, OAuth, signed URL, booking hoặc dữ liệu cá nhân. Không thêm cache cho dữ liệu riêng tư. Deploy frontend trước khi mở booking và nghiệm thu URL callback thật.
+
+Nếu dùng Vercel, `vercel.json` cũng khai báo security headers và SPA rewrite; `_headers` chỉ có tác dụng trên Cloudflare Pages. Font chỉ tải từ cùng website. Dev/build từ chối secret/service-role key trong `VITE_SUPABASE_ANON_KEY`; đây không thay thế việc kiểm tra toàn bộ biến `VITE_*` và artifact trước khi deploy. Nếu từng deploy nhầm secret, phải thu hồi/rotate trong Supabase và xóa artifact/cache đã lộ.
 
 ## Luồng giao dịch
 
@@ -48,6 +59,7 @@ Chủ tài khoản tạo Pages project từ Git repository chứa mã nguồn n�
 - Khách báo đã chuyển chỉ tạo `REPORTED`. Admin kiểm tra tiền thực nhận, nhập mã tham chiếu rồi mới xác nhận. Không có gateway/QR tự động, SMS/email trả phí hoặc webhook thanh toán giả.
 - Sau giờ kết thúc, creator mới được hoàn thành. Chỉ khách booking đó được review, một lần, bốn tiêu chí 1–5.
 - Chưa chuyển tiền: khách hủy trực tiếp. Đã báo chuyển/đã nhận tiền: ticket hỗ trợ; admin xử lý theo chính sách snapshot. Hoàn tiền được ghi `REFUND_PENDING` trước, chỉ ghi `REFUNDED` sau giao dịch hoàn thật.
+- Cọc đúng số tiền nhưng chuyển muộn vào booking `EXPIRED`/`CANCELLED`/`REJECTED`: admin kiểm tra tiền thực nhận, mở booking → **Đối soát cọc chuyển muộn để hoàn**. RPC ghi hàng chờ hoàn và audit, giữ nguyên trạng thái kết thúc, không chiếm lại lịch. Chỉ ghi nhận một lần. Mã giao dịch nhận cọc/hoàn tiền có ràng buộc duy nhất sau khi chuẩn hóa chữ hoa/thường và khoảng trắng ở đầu/cuối. Admin chỉ nhập mã ngân hàng, không thêm ghi chú vào mã; DB chặn mã trùng chính xác, nhưng không thể nhận biết người nhập hai chuỗi khác nhau cho cùng một giao dịch ngân hàng. Tiền chuyển thiếu/thừa vẫn cần đối soát thủ công; không có kết nối ngân hàng thật.
 - Đổi lịch xử lý thủ công qua hỗ trợ: thống nhất hai bên, xử lý tiền booking cũ rồi đặt booking mới. Không có công cụ đổi giờ giữ nguyên cọc tự động.
 - App chỉ theo dõi **tiền cọc**, không phải kế toán, ví, escrow hay payout. Phần còn lại và việc chuyển tiền cọc cho creator phải có thỏa thuận/đối soát riêng; GMV không phải doanh thu nền tảng.
 
@@ -64,6 +76,8 @@ Chủ tài khoản tạo Pages project từ Git repository chứa mã nguồn n�
 
 `npm test` chạy chính migration bằng PGlite (PostgreSQL nhúng), kiểm tra RLS, quyền actor, state machine, snapshot, idempotency, ràng buộc loại trừ lịch giao nhau, hoàn tiền, review, nhắc lịch và analytics. Mock chỉ phần schema auth/storage của Supabase; **không thay thế nghiệm thu Auth/PostgREST/Storage trên hosted Supabase, không phải load test nhiều kết nối**.
 
+`npm run test:e2e` chạy Chromium desktop 1440px và mobile 390px với HTTP Supabase được giả lập: khám phá → hồ sơ → booking, retry lỗi mạng cùng request key, creator nhận lịch, báo cọc, admin xác nhận, hoàn thành/review, hủy chưa cọc, hỗ trợ hủy/hoàn cọc và cọc chuyển muộn. Có kiểm tra axe cho các trang chính. Đây là test hợp đồng UI; không dùng chúng để xác nhận RLS, OAuth, ngân hàng hoặc production. Chi tiết và phần còn thiếu nằm trong [VERIFICATION.md](VERIFICATION.md). CI chạy test, build và E2E khi mở PR; không tự deploy hay migrate DB.
+
 - [ ] Google login/logout/callback/deep-link trên production, hai tài khoản khách và một creator/admin riêng.
 - [ ] Creator tạo và cập nhật hồ sơ, ảnh thật, package, mở/đóng lịch; quyền đọc ảnh người lạ và ảnh chưa duyệt đúng.
 - [ ] Khách tìm đúng creator theo tất cả bộ lọc AND; ngày/giờ Việt Nam đúng.
@@ -77,11 +91,13 @@ Chủ tài khoản tạo Pages project từ Git repository chứa mã nguồn n�
 
 ## Phạm vi và giới hạn minh bạch
 
-- Web-first, responsive, không cần cài app. Chưa có native app/chat/AI matching/gateway hay push notification.
+- Web responsive + PWA có thể thêm vào màn hình chính. Xem `/install` và [CLASSROOM_GUIDE.md](CLASSROOM_GUIDE.md). Chưa có app phát hành qua cửa hàng, chat/AI matching/gateway hoặc push notification.
 - Thống kê funnel chỉ tài khoản đã đăng nhập, tối đa 100 event/ngày/tài khoản, gộp cùng loại trong 10 giây, giữ 90 ngày. Không ghi search term, địa chỉ hoặc ghi chú vào event. `CONFIRMED`/`COMPLETED` lấy từ booking thật. Chưa có visitor analytics cho khách chưa đăng nhập.
-- Admin metrics tổng hợp toàn bộ database; danh sách admin giới hạn 500 booking, 200 ticket, 500 users và 100 audit gần nhất. Tăng trưởng vượt beta cần pagination/monitoring/anti-abuse và load testing bổ sung.
+- Admin dùng truy vấn phân trang 25 dòng cho booking, hàng chờ đối soát/hoàn/hỗ trợ, người dùng và audit; xử lý ticket tải riêng booking cần thiết. Thống kê dùng RPC tổng hợp toàn DB. Danh sách creator vẫn cần pagination phía server khi vượt quy mô lớp học; chưa kiểm thử tải lớn.
 - Có khóa tại DB + exclusion constraint, không dựa vào đồng hồ hoặc localStorage phía khách để xác nhận giữ chỗ/thanh toán. Rate limit nghiệp vụ chưa thay thế WAF chống tấn công phân tán.
-- Portfolio được nén WebP trước upload, private bucket giới hạn 512 KB/ảnh và 12 ảnh/creator. Kiểm tra MIME/size không phải dịch vụ quét mã độc hoặc nhận diện ảnh tự động. Orphan upload cần người quản trị dọn, hiện chưa có nút xóa ảnh của creator.
+- Portfolio được nén WebP trước upload, private bucket giới hạn 512 KB/ảnh và 12 ảnh/creator. Kiểm tra MIME/size không phải dịch vụ quét mã độc hoặc nhận diện ảnh tự động. Creator có thể xóa ảnh của mình, giữ ít nhất ba ảnh khi hồ sơ đang hoạt động/chờ duyệt. DB gỡ tham chiếu trước khi xóa Storage; nếu xóa file thất bại, UI báo để quản trị dọn object mồ côi.
+- Creator đã lưu nằm trong bảng riêng theo tài khoản, RLS ngăn đọc chéo; tối đa 100 creator/tài khoản. Thông báo chưa đọc được làm mới khi ứng dụng hiển thị và có mạng, không phải push.
+- Review công khai qua `provider_reviews` chỉ chứa nội dung hiển thị, không trả `author_id`/`booking_id`. Bảng review đầy đủ chỉ cho khách tác giả, admin hoặc bên liên quan theo policy. Nội dung review/tên hiển thị vẫn là công khai: không nhập địa chỉ hoặc thông tin ngân hàng vào review. Nháp booking lưu trong phiên tab để khôi phục lỗi mạng, được xóa khi gửi thành công hoặc đăng xuất; trình duyệt chặn lưu nháp vẫn gửi booking được.
 - SEO dùng URL riêng, title/description cơ bản; chưa prerender từng hồ sơ, chưa có sitemap production hay OpenGraph động. Không giả định SPA đã đạt SEO đầy đủ.
 - Prototype và ảnh demo giữ ở `legacy/`, không nằm trong bản deploy. `data/db.json` cũ không được dùng/import vào database mới. Không deploy `legacy/server.cjs`.
 

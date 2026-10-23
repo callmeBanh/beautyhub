@@ -26,7 +26,7 @@ import {
   type Profile,
   type Support,
 } from "./domain";
-import { Alert, Badge, Empty, Field, Modal } from "./ui";
+import { Alert, Badge, Empty, Field, Loading, Modal } from "./ui";
 import { BookingCard } from "./Bookings";
 const PAGE_SIZE = 25;
 type AdminList =
@@ -342,6 +342,7 @@ export function Admin() {
             <button
               key={k}
               className={tab === k ? "active" : ""}
+              aria-pressed={tab === k}
               onClick={() => setTab(k)}
             >
               <Icon size={17} />
@@ -837,7 +838,12 @@ export function Admin() {
           </form>
         )}
         {resolve && (
-          <Modal title="Xử lý yêu cầu hỗ trợ" onClose={() => setResolve(null)}>
+          <Modal
+            title="Xử lý yêu cầu hỗ trợ"
+            onClose={() => {
+              if (!busy) setResolve(null);
+            }}
+          >
             <p>{resolve.message}</p>
             {resolveLoading && <p role="status">Đang tải thông tin booking…</p>}
             {resolveError && <Alert>{resolveError}</Alert>}

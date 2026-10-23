@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { AppProvider } from "./context";
 import App from "./App";
+import { PwaProvider } from "./pwa";
 import { ErrorBoundary } from "./ErrorBoundary";
 import "@fontsource/lora/latin-400.css";
 import "@fontsource/lora/vietnamese-400.css";
@@ -22,7 +23,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <ErrorBoundary>
       <BrowserRouter>
         <AppProvider>
-          <App />
+          <PwaProvider>
+            <App />
+          </PwaProvider>
         </AppProvider>
       </BrowserRouter>
     </ErrorBoundary>

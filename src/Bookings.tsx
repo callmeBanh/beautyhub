@@ -59,6 +59,17 @@ export function Checkout() {
   );
   const pkg = provider?.packages.find((k) => k.id === packageId && k.active);
   const storageKey = `bh-draft:${user!.id}:${packageId}:${start}`;
+  const [requestKey] = useState(() => {
+    const fallback = crypto.randomUUID();
+    try {
+      const existing = sessionStorage.getItem(storageKey + ":request");
+      if (existing) return existing;
+      sessionStorage.setItem(storageKey + ":request", fallback);
+    } catch {
+      /* A blocked storage API must not prevent booking or retry. */
+    }
+    return fallback;
+  });
   const [draft, setDraft] = useState<Draft>(() => {
     try {
       const saved = sessionStorage.getItem(storageKey);
@@ -117,11 +128,6 @@ export function Checkout() {
           setBusy(true);
           setError("");
           try {
-            let key = sessionStorage.getItem(storageKey + ":request");
-            if (!key) {
-              key = crypto.randomUUID();
-              sessionStorage.setItem(storageKey + ":request", key);
-            }
             const id = await rpc<string>("create_booking", {
               p_package: pkg.id,
               p_start: start,
@@ -130,9 +136,14 @@ export function Checkout() {
               p_district: draft.district,
               p_address: draft.address,
               p_notes: draft.notes,
-              p_key: key,
+              p_key: requestKey,
             });
-            sessionStorage.removeItem(storageKey);
+            try {
+              sessionStorage.removeItem(storageKey);
+              sessionStorage.removeItem(storageKey + ":request");
+            } catch {
+              /* The server already saved the booking. */
+            }
             void track("booking_submitted");
             navigate(`/bookings/${id}?created=1`, { replace: true });
           } catch (e) {
@@ -329,6 +340,7 @@ export function Bookings() {
           <button
             key={key}
             className={tab === key ? "active" : ""}
+            aria-pressed={tab === key}
             onClick={() => setTab(key)}
           >
             {label}
@@ -420,7 +432,8 @@ export function BookingDetail() {
         client().from("reviews").select("*").eq("booking_id", id).maybeSingle(),
         rpc<string>("booking_contact", { p_id: id }),
       ]);
-      if (ev.error) throw ev.error;
+      if (ev.error || ts.error || rv.error)
+        throw ev.error || ts.error || rv.error;
       setEvents(ev.data || []);
       setTickets(ts.data || []);
       setReview(rv.data);
@@ -433,6 +446,12 @@ export function BookingDetail() {
     }
   }
   useEffect(() => {
+    setB(null);
+    setEvents([]);
+    setTickets([]);
+    setReview(null);
+    setContact("");
+    setLoading(true);
     void load();
     const interval = setInterval(() => void load(), 30000);
     return () => clearInterval(interval);
@@ -464,6 +483,10 @@ export function BookingDetail() {
   if (!b)
     return (
       <div className="page">
+        {error && <Alert>{error}</Alert>}
+        <button className="btn ghost" onClick={() => void load()}>
+          Thử lại
+        </button>
         <Empty title="Không tìm thấy booking của bạn">
           <p>Kiểm tra tài khoản hoặc đường dẫn.</p>
           <Link to="/bookings">Về lịch hẹn</Link>
@@ -663,6 +686,14 @@ export function BookingDetail() {
                 <Link className="btn ghost" to="/explore">
                   Tìm lịch khác <ArrowRight size={16} />
                 </Link>
+                {admin && b.payment_status === "UNPAID" && (
+                  <button
+                    className="btn ghost"
+                    onClick={() => setModal("LATE_DEPOSIT")}
+                  >
+                    Đối soát cọc chuyển muộn để hoàn
+                  </button>
+                )}
               </>
             )}
             {b.payment_status === "REFUND_PENDING" && (
@@ -861,6 +892,11 @@ export function BookingDetail() {
                     p_id: id,
                     p_reference: f.get("detail"),
                   });
+                if (modal === "LATE_DEPOSIT")
+                  await rpc("reconcile_late_deposit", {
+                    p_id: id,
+                    p_reference: f.get("detail"),
+                  });
                 setModal("");
                 await load();
                 toast("Đã gửi thành công.");
@@ -905,18 +941,26 @@ export function BookingDetail() {
             {!["CANCEL", "COMPLETE"].includes(modal) && (
               <Field
                 label={
-                  ["REPORT_PAYMENT", "VERIFY_PAYMENT", "REFUND"].includes(modal)
-                    ? "Mã giao dịch / thời điểm / thông tin đối soát"
-                    : "Nội dung cụ thể"
+                  ["VERIFY_PAYMENT", "REFUND", "LATE_DEPOSIT"].includes(modal)
+                    ? "Mã giao dịch ngân hàng duy nhất (chỉ nhập mã)"
+                    : modal === "REPORT_PAYMENT"
+                      ? "Mã giao dịch / thời điểm / thông tin đối soát"
+                      : "Nội dung cụ thể"
                 }
               >
                 <textarea
                   name="detail"
                   required
                   minLength={
-                    ["VERIFY_PAYMENT", "REFUND"].includes(modal) ? 6 : 10
+                    ["VERIFY_PAYMENT", "REFUND", "LATE_DEPOSIT"].includes(modal)
+                      ? 6
+                      : 10
                   }
-                  maxLength={2000}
+                  maxLength={
+                    ["VERIFY_PAYMENT", "REFUND", "LATE_DEPOSIT"].includes(modal)
+                      ? 120
+                      : 2000
+                  }
                   rows={4}
                 />
               </Field>
@@ -925,6 +969,14 @@ export function BookingDetail() {
               <p>
                 Chỉ báo sau khi đã chuyển đúng {money(b.deposit)}. BeautyHub sẽ
                 kiểm tra tiền thực nhận trước khi xác nhận lịch.
+              </p>
+            )}
+            {modal === "LATE_DEPOSIT" && (
+              <p>
+                Chỉ ghi nhận sau khi kiểm tra đã thực nhận đúng{" "}
+                {money(b.deposit)} tiền cọc. Khoản này sẽ chờ hoàn; booking và
+                giờ đã giải phóng vẫn giữ trạng thái kết thúc. Tiền chuyển khác
+                số cọc cần đối soát thủ công qua hỗ trợ.
               </p>
             )}
             {modal === "CANCEL" && (

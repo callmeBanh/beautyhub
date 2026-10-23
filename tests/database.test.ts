@@ -1,9 +1,18 @@
-import { beforeAll, afterAll, describe, it, expect } from "vitest";
+import {
+  beforeAll,
+  afterAll,
+  beforeEach,
+  afterEach,
+  describe,
+  it,
+  expect,
+} from "vitest";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { btree_gist } from "@electric-sql/pglite/contrib/btree_gist";
 
 let db: PGlite;
+let isolated = false;
 const customer = "11111111-1111-4111-8111-111111111111",
   other = "22222222-2222-4222-8222-222222222222",
   owner = "33333333-3333-4333-8333-333333333333",
@@ -20,7 +29,18 @@ async function as(id: string | null, role = "authenticated") {
   await db.exec(`set role ${role}`);
 }
 async function call<T = any>(sql: string, args: unknown[] = []) {
-  return (await db.query<T>(sql, args)).rows;
+  if (isolated) await db.exec("savepoint test_call");
+  try {
+    const rows = (await db.query<T>(sql, args)).rows;
+    if (isolated) await db.exec("release savepoint test_call");
+    return rows;
+  } catch (e) {
+    if (isolated)
+      await db.exec(
+        "rollback to savepoint test_call; release savepoint test_call",
+      );
+    throw e;
+  }
 }
 async function create(at = start, requestKey = crypto.randomUUID()) {
   return call<{ id: string }>(
@@ -42,6 +62,12 @@ beforeAll(async () => {
   );
   await db.exec(
     readFileSync("supabase/migrations/202610210001_hardening.sql", "utf8"),
+  );
+  await db.exec(
+    readFileSync("supabase/migrations/202610220001_audit.sql", "utf8"),
+  );
+  await db.exec(
+    readFileSync("supabase/migrations/202610220002_product.sql", "utf8"),
   );
   await db.query("insert into auth.users(id) values ($1),($2),($3),($4)", [
     customer,
@@ -82,6 +108,289 @@ beforeAll(async () => {
 }, 60000);
 afterAll(async () => {
   await db?.close();
+});
+
+describe("audit regressions (isolated transactions)", () => {
+  beforeEach(async () => {
+    await db.exec("reset role; begin");
+    isolated = true;
+  });
+  afterEach(async () => {
+    isolated = false;
+    await db.exec("rollback; reset role");
+  });
+
+  it("saved creators are private, idempotent and only approved creators can be saved", async () => {
+    await as(null, "anon");
+    await expect(
+      call("select public.set_favorite($1,true)", [provider]),
+    ).rejects.toThrow(/permission denied/);
+    await as(customer);
+    await expect(
+      call("select public.set_favorite($1,null)", [provider]),
+    ).rejects.toThrow(/không hợp lệ/);
+    await call("select public.set_favorite($1,true)", [provider]);
+    await call("select public.set_favorite($1,true)", [provider]);
+    expect(await call("select * from public.provider_favorites")).toHaveLength(
+      1,
+    );
+    await expect(
+      call(
+        "insert into public.provider_favorites(user_id,provider_id) values($1,$2)",
+        [other, provider],
+      ),
+    ).rejects.toThrow(/permission denied/);
+    await as(other);
+    expect(await call("select * from public.provider_favorites")).toHaveLength(
+      0,
+    );
+    await db.exec("reset role");
+    await call("update public.providers set status='SUSPENDED' where id=$1", [
+      provider,
+    ]);
+    await as(other);
+    await expect(
+      call("select public.set_favorite($1,true)", [provider]),
+    ).rejects.toThrow(/chưa khả dụng/);
+    await as(customer);
+    await call("select public.set_favorite($1,false)", [provider]);
+    expect(await call("select * from public.provider_favorites")).toHaveLength(
+      0,
+    );
+  });
+
+  it("runs discovery → request → accept → report → verify → complete → review using real RPCs", async () => {
+    await as(null, "anon");
+    expect(
+      await call("select id from public.providers where id=$1", [provider]),
+    ).toHaveLength(1);
+    const slots = await call("select * from public.free_slots($1,$2)", [
+      pkg,
+      day,
+    ]);
+    expect(slots.length).toBeGreaterThan(0);
+    await as(customer);
+    const [{ id }] = await create(`${day}T13:00:00+07:00`);
+    await as(owner);
+    await call("select public.booking_action($1,'ACCEPT','')", [id]);
+    await as(customer);
+    await call(
+      "select public.booking_action($1,'REPORT_PAYMENT','Customer reference 789')",
+      [id],
+    );
+    await expect(
+      call("select public.booking_action($1,'CANCEL','')", [id]),
+    ).rejects.toThrow(/Thao tác/);
+    await as(admin);
+    await call(
+      "select public.booking_action($1,'VERIFY_PAYMENT','Verified bank reference 789')",
+      [id],
+    );
+    // Only time travel is privileged; completion itself must go through the creator RPC.
+    await db.exec("reset role");
+    await call(
+      "update public.bookings set starts_at=now()-interval '3 hours',ends_at=now()-interval '1 hour' where id=$1",
+      [id],
+    );
+    await as(owner);
+    await call("select public.booking_action($1,'COMPLETE','')", [id]);
+    await as(customer);
+    await call(
+      "select public.submit_review($1,5,4,5,4,'Trải nghiệm hoàn tất từ RPC thực.')",
+      [id],
+    );
+    expect(
+      (
+        await call(
+          "select status,payment_status from public.bookings where id=$1",
+          [id],
+        )
+      )[0],
+    ).toEqual({ status: "COMPLETED", payment_status: "PAID" });
+    await as(other);
+    expect(
+      await call("select * from public.reviews where booking_id=$1", [id]),
+    ).toHaveLength(0);
+    expect(
+      await call("select * from public.bookings where id=$1", [id]),
+    ).toHaveLength(0);
+    await as(null, "anon");
+    const review = (
+      await call("select * from public.provider_reviews() where text=$1", [
+        "Trải nghiệm hoàn tất từ RPC thực.",
+      ])
+    )[0];
+    expect(review).toBeDefined();
+    expect(review).not.toHaveProperty("author_id");
+    expect(review).not.toHaveProperty("booking_id");
+    expect(await call("select * from public.reviews")).toHaveLength(0);
+    await as(admin);
+    await call(
+      "select public.moderate_content($1,'review','Ẩn nội dung để kiểm tra riêng tư')",
+      [review.id],
+    );
+    await as(null, "anon");
+    expect(
+      await call("select * from public.provider_reviews() where id=$1", [
+        review.id,
+      ]),
+    ).toHaveLength(0);
+    await as(owner);
+    expect(
+      await call("select * from public.reviews where id=$1", [review.id]),
+    ).toHaveLength(0);
+    await as(customer);
+    expect(
+      await call("select * from public.reviews where id=$1", [review.id]),
+    ).toHaveLength(1);
+  });
+
+  it("rejects null array elements instead of publishing unusable creator filters", async () => {
+    await as(owner);
+    await expect(
+      call(
+        "select public.save_provider('test-studio','Test Studio','Photographer','Valid biography',array['Quận 1'],array[null,null]::text[])",
+      ),
+    ).rejects.toThrow(/Chọn khu vực/);
+  });
+
+  it("reconciles and refunds a late deposit once without reclaiming the released slot", async () => {
+    await as(customer);
+    const [{ id }] = await create(`${day}T13:00:00+07:00`);
+    await call("select public.booking_action($1,'CANCEL','')", [id]);
+    await expect(
+      call("select public.reconcile_late_deposit($1,'Late bank ref 123')", [
+        id,
+      ]),
+    ).rejects.toThrow(/Chỉ admin/);
+    await as(other);
+    await create(`${day}T13:00:00+07:00`);
+    await as(admin);
+    await expect(
+      call("select public.reconcile_late_deposit($1,null)", [id]),
+    ).rejects.toThrow(/mã giao dịch/);
+    await call("select public.reconcile_late_deposit($1,'Late bank ref 123')", [
+      id,
+    ]);
+    expect(
+      (
+        await call(
+          "select status,payment_status,refund_amount from public.bookings where id=$1",
+          [id],
+        )
+      )[0],
+    ).toEqual({
+      status: "CANCELLED",
+      payment_status: "REFUND_PENDING",
+      refund_amount: 360000,
+    });
+    await expect(
+      call("select public.reconcile_late_deposit($1,'Repeated bank ref 123')", [
+        id,
+      ]),
+    ).rejects.toThrow(/một lần/);
+    await call(
+      "select public.confirm_refund($1,'Refunded late transfer 123')",
+      [id],
+    );
+    await expect(
+      call("select public.confirm_refund($1,'Duplicate refund 123')", [id]),
+    ).rejects.toThrow(/Không có khoản hoàn/);
+  });
+
+  it("rejects null operational configuration atomically", async () => {
+    await as(admin);
+    await expect(
+      call(
+        "select public.save_settings(null,'123456','TEST','https://example.com',repeat('policy',30),true)",
+      ),
+    ).rejects.toThrow(/null/);
+  });
+
+  it("cannot resolve a support request with a null cancellation decision", async () => {
+    await as(customer);
+    const [{ id: bid }] = await create(`${day}T13:00:00+07:00`);
+    const [{ id }] = await call(
+      "select public.request_support($1,'HELP','Cần giải thích kết quả giao dịch') id",
+      [bid],
+    );
+    await as(admin);
+    await expect(
+      call("select public.resolve_support($1,'Nội dung xử lý hợp lệ',null,0)", [
+        id,
+      ]),
+    ).rejects.toThrow(/kết quả/);
+    expect(
+      (
+        await call("select status from public.support_requests where id=$1", [
+          id,
+        ])
+      )[0].status,
+    ).toBe("OPEN");
+  });
+
+  it("rejects unpaid requests, allows cancellation, and releases slots without payment", async () => {
+    await as(customer);
+    const [{ id }] = await create(`${day}T13:00:00+07:00`);
+    await expect(
+      call(
+        "select public.booking_action($1,'REPORT_PAYMENT','too early reference')",
+        [id],
+      ),
+    ).rejects.toThrow(/Thao tác/);
+    await as(owner);
+    await call(
+      "select public.booking_action($1,'REJECT','Không thể nhận lịch này')",
+      [id],
+    );
+    await as(other);
+    const [{ id: next }] = await create(`${day}T13:00:00+07:00`);
+    await call("select public.booking_action($1,'CANCEL','')", [next]);
+    expect(
+      (
+        await call(
+          "select status,payment_status from public.bookings where id=$1",
+          [next],
+        )
+      )[0],
+    ).toEqual({ status: "CANCELLED", payment_status: "UNPAID" });
+  });
+
+  it("payment not found can be reported again and is never expired during review", async () => {
+    await as(customer);
+    const [{ id }] = await create(`${day}T13:00:00+07:00`);
+    await as(owner);
+    await call("select public.booking_action($1,'ACCEPT','')", [id]);
+    await as(customer);
+    await call(
+      "select public.booking_action($1,'REPORT_PAYMENT','Reported bank 123')",
+      [id],
+    );
+    await as(admin);
+    await call(
+      "select public.booking_action($1,'PAYMENT_NOT_FOUND','Chưa thấy giao dịch')",
+      [id],
+    );
+    await as(customer);
+    await call(
+      "select public.booking_action($1,'REPORT_PAYMENT','Corrected bank 456')",
+      [id],
+    );
+    await db.exec("reset role");
+    await call(
+      "update public.bookings set hold_until=now()-interval '1 hour' where id=$1",
+      [id],
+    );
+    await call("select private.maintenance()");
+    expect(
+      (
+        await call(
+          "select status,payment_status from public.bookings where id=$1",
+          [id],
+        )
+      )[0],
+    ).toEqual({ status: "PAYMENT_REVIEW", payment_status: "REPORTED" });
+  });
 });
 describe("PostgreSQL booking and authorization", () => {
   it("maintenance is inaccessible to browser roles", async () => {
@@ -478,7 +787,9 @@ describe("hardening migration", () => {
       a,
     ]);
     await expect(
-      call("select public.booking_action($1,'VERIFY_PAYMENT','ft123456 ')", [b]),
+      call("select public.booking_action($1,'VERIFY_PAYMENT','ft123456 ')", [
+        b,
+      ]),
     ).rejects.toThrow(/đã được dùng/);
     await call("select public.booking_action($1,'VERIFY_PAYMENT','FT654321')", [
       b,

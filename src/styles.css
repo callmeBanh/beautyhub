@@ -1,16 +1,18 @@
 :root {
+  color-scheme: light;
   font-family: "Be Vietnam Pro", sans-serif;
   color: #292622;
   background: #fdfbf7;
   font-synthesis: none;
   font-weight: 400;
   --ink: #292622;
-  --muted: #7e766d;
+  --muted: #6b6259;
   --line: #e8e1d7;
   --cream: #f5f0e8;
-  --brand: #b95b43;
+  --brand: #a54b35;
   --green: #476c53;
 }
+
 * {
   box-sizing: border-box;
 }
@@ -196,7 +198,7 @@ details p {
   border-radius: 4px;
   padding: 3px 5px;
   margin-left: 3px;
-  color: #8a7665;
+  color: #75614f;
 }
 .nav {
   display: flex;
@@ -599,7 +601,7 @@ details p {
   display: flex;
   gap: 3px;
   align-items: center;
-  color: #90714b;
+  color: #795c39;
 }
 .creator-card > p {
   font-size: 10px;
@@ -840,7 +842,7 @@ footer > small {
   margin: 0 0 17px;
   min-width: 0;
 }
-.field > span {
+.field > label {
   font-size: 11px;
   font-weight: 600;
 }
@@ -1312,7 +1314,7 @@ footer > small {
   padding: 7px 10px;
   border-radius: 30px;
   background: #f4eddc;
-  color: #8e6a2f;
+  color: #795725;
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -2325,7 +2327,7 @@ td {
     padding: 10px;
     font-size: 11px;
   }
-  .filter-panel .field > span {
+  .filter-panel .field > label {
     font-size: 10px;
   }
   .results-grid {
@@ -2571,4 +2573,168 @@ td {
     transition: none !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Keep long customer input inside grid columns and touch controls readable. */
+.detail-layout > *,
+.checkout-layout > *,
+.workspace-main,
+.results {
+  min-width: 0;
+}
+.panel,
+.booking-card,
+.list-row {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+  .field > label,
+  .field small,
+  .checkbox,
+  .workspace-sidebar nav button {
+    font-size: 12px;
+  }
+  .icon-button,
+  .close,
+  .slot {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+.creator-card-shell {
+  position: relative;
+  min-width: 0;
+}
+.favorite-button {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #fdfbf7;
+  color: #292622;
+  cursor: pointer;
+}
+.favorite-button[aria-pressed="true"] {
+  color: #a54b35;
+  background: #fff1e8;
+}
+.creator-card-shell > .favorite-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+}
+.profile-favorite {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.install-page .app-icon {
+  display: block;
+  margin: 0 0 24px;
+  border-radius: 24px;
+}
+.install-page h1 {
+  font-size: clamp(34px, 6vw, 52px);
+}
+.install-instructions {
+  display: grid;
+  gap: 18px;
+  margin: 30px 0;
+}
+.install-instructions ol {
+  padding-left: 24px;
+}
+.install-instructions li {
+  margin: 8px 0;
+}
+.install-instructions h2 {
+  font-size: 26px;
+  margin-top: 18px;
+}
+.app-update {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px max(24px, env(safe-area-inset-right));
+  background: #f5f0e8;
+  border-bottom: 1px solid var(--line);
+}
+.app-update p {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+.app-update > div {
+  flex: 1;
+  min-width: 180px;
+}
+.mobile-bottom-nav {
+  display: none;
+}
+@media (max-width: 720px) {
+  body {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+  .mobile-bottom-nav {
+    position: fixed;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 35;
+    padding: 6px max(6px, env(safe-area-inset-right))
+      calc(6px + env(safe-area-inset-bottom))
+      max(6px, env(safe-area-inset-left));
+    background: #fdfbf7;
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -4px 18px #29262208;
+  }
+  .mobile-bottom-nav a {
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    min-height: 54px;
+    font-size: 11px;
+    color: #6b6259;
+  }
+  .mobile-bottom-nav a.active {
+    color: #a54b35;
+    font-weight: 600;
+  }
+  .toast {
+    bottom: calc(86px + env(safe-area-inset-bottom));
+  }
+  .modal-backdrop {
+    z-index: 100;
+  }
+  .modal {
+    padding-bottom: calc(28px + env(safe-area-inset-bottom));
+  }
+}
+
+.header-actions .icon-button {
+  position: relative;
+}
+.unread-count {
+  position: absolute;
+  right: -6px;
+  top: -5px;
+  background: #a54b35;
+  color: white;
+  border-radius: 12px;
+  min-width: 18px;
+  padding: 2px 4px;
+  font-size: 10px;
+  line-height: 1.3;
 }

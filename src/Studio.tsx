@@ -32,6 +32,7 @@ export function Studio() {
   const { user, profile, providers, refresh, toast } = useApp();
   const own = providers.find((p) => p.owner_id === user!.id);
   const [tab, setTab] = useState(own ? "overview" : "profile"),
+    [loading, setLoading] = useState(Boolean(own)),
     [bookings, setBookings] = useState<Booking[]>([]),
     [hours, setHours] = useState<
       { id: string; starts_at: string; ends_at: string }[]
@@ -41,24 +42,31 @@ export function Studio() {
     [edit, setEdit] = useState<Package | "new" | null>(null);
   async function load() {
     if (!own) return;
-    const [a, b] = await Promise.all([
-      client()
-        .from("bookings")
-        .select("*")
-        .eq("provider_id", own.id)
-        .order("starts_at"),
-      client()
-        .from("availability")
-        .select("*")
-        .eq("provider_id", own.id)
-        .order("starts_at"),
-    ]);
-    if (a.error || b.error) {
-      setError((a.error || b.error)!.message);
-      return;
+    setLoading(true);
+    try {
+      const [a, b] = await Promise.all([
+        client()
+          .from("bookings")
+          .select("*")
+          .eq("provider_id", own.id)
+          .order("starts_at"),
+        client()
+          .from("availability")
+          .select("*")
+          .eq("provider_id", own.id)
+          .order("starts_at"),
+      ]);
+      if (a.error || b.error) {
+        throw a.error || b.error;
+      }
+      setBookings(a.data || []);
+      setHours(b.data || []);
+      setError("");
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setLoading(false);
     }
-    setBookings(a.data || []);
-    setHours(b.data || []);
   }
   useEffect(() => {
     void load();
@@ -104,6 +112,7 @@ export function Studio() {
             <button
               key={k}
               className={tab === k ? "active" : ""}
+              aria-pressed={tab === k}
               onClick={() => setTab(k)}
             >
               <Icon size={17} />
@@ -152,57 +161,61 @@ export function Studio() {
             thật, gói dịch vụ và lịch trống rồi gửi duyệt.
           </div>
         )}
-        {tab === "overview" && (
-          <>
-            <div className="metrics">
-              {[
-                ["Cần phản hồi", incoming.length],
-                ["Booking đang xử lý", upcoming.length],
-                [
-                  "Đã hoàn thành",
-                  bookings.filter((b) => b.status === "COMPLETED").length,
-                ],
-                [
-                  "Cọc đã nhận",
-                  money(
-                    bookings
-                      .filter((b) => b.payment_status === "PAID")
-                      .reduce((s, b) => s + b.deposit, 0),
-                  ),
-                ],
-              ].map(([t, n]) => (
-                <div className="metric" key={t}>
-                  <small>{t}</small>
-                  <strong>{n}</strong>
-                </div>
-              ))}
-            </div>
-            <section className="panel">
-              <h2>Yêu cầu cần phản hồi</h2>
-              {incoming.length ? (
-                incoming.map((b) => <BookingCard key={b.id} b={b} />)
-              ) : (
-                <Empty title="Chưa có yêu cầu mới">
-                  Yêu cầu mới sẽ xuất hiện tại đây.
-                </Empty>
-              )}
-            </section>
-            <section className="panel">
-              <h2>Lịch sắp tới & đang đối soát</h2>
-              {upcoming.length ? (
-                upcoming.map((b) => <BookingCard key={b.id} b={b} />)
-              ) : (
-                <p className="muted">Bạn chưa có booking sắp tới.</p>
-              )}
-            </section>
-            <button
-              className="btn ghost"
-              disabled={busy}
-              onClick={() => run(load, "Đã cập nhật lịch.")}
-            >
-              Làm mới dữ liệu
-            </button>
-          </>
+        {tab === "overview" && loading ? (
+          <Loading />
+        ) : (
+          tab === "overview" && (
+            <>
+              <div className="metrics">
+                {[
+                  ["Cần phản hồi", incoming.length],
+                  ["Booking đang xử lý", upcoming.length],
+                  [
+                    "Đã hoàn thành",
+                    bookings.filter((b) => b.status === "COMPLETED").length,
+                  ],
+                  [
+                    "Cọc đã nhận",
+                    money(
+                      bookings
+                        .filter((b) => b.payment_status === "PAID")
+                        .reduce((s, b) => s + b.deposit, 0),
+                    ),
+                  ],
+                ].map(([t, n]) => (
+                  <div className="metric" key={t}>
+                    <small>{t}</small>
+                    <strong>{n}</strong>
+                  </div>
+                ))}
+              </div>
+              <section className="panel">
+                <h2>Yêu cầu cần phản hồi</h2>
+                {incoming.length ? (
+                  incoming.map((b) => <BookingCard key={b.id} b={b} />)
+                ) : (
+                  <Empty title="Chưa có yêu cầu mới">
+                    Yêu cầu mới sẽ xuất hiện tại đây.
+                  </Empty>
+                )}
+              </section>
+              <section className="panel">
+                <h2>Lịch sắp tới & đang đối soát</h2>
+                {upcoming.length ? (
+                  upcoming.map((b) => <BookingCard key={b.id} b={b} />)
+                ) : (
+                  <p className="muted">Bạn chưa có booking sắp tới.</p>
+                )}
+              </section>
+              <button
+                className="btn ghost"
+                disabled={busy}
+                onClick={() => run(load, "Đã cập nhật lịch.")}
+              >
+                Làm mới dữ liệu
+              </button>
+            </>
+          )
         )}
         {tab === "profile" && (
           <form
@@ -564,7 +577,9 @@ export function Studio() {
         {edit && (
           <Modal
             title={edit === "new" ? "Tạo gói dịch vụ" : "Chỉnh sửa gói"}
-            onClose={() => setEdit(null)}
+            onClose={() => {
+              if (!busy) setEdit(null);
+            }}
           >
             <form
               className="form-grid"
