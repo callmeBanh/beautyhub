@@ -33,6 +33,7 @@ import { Home, Explore, Creator } from "./Discovery";
 import { Checkout, BookingDetail, Bookings } from "./Bookings";
 import { Studio } from "./Studio";
 import { Admin } from "./Admin";
+import { Privacy, Terms } from "./Legal";
 import {
   analyticsConfigured,
   consentSettingsEvent,
@@ -162,6 +163,10 @@ function Footer() {
         <small className="footer-legal">
           © 2026 BeautyHub Vietnam · Nền tảng kết nối sáng tạo & làm đẹp uy tín
           tại TP.HCM. Bảo vệ dữ liệu theo Nghị định 13/2023/NĐ-CP.
+          {" · "}
+          <Link to="/terms">Điều khoản</Link>
+          {" · "}
+          <Link to="/privacy">Quyền riêng tư</Link>
         </small>
         <small className="footer-meta">
           TP.HCM · Version 1.0 Production · An tâm trải nghiệm
@@ -885,6 +890,8 @@ export default function App() {
           />
           <Route path="/how-it-works" element={<How />} />
           <Route path="/policies" element={<Policies />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
           <Route path="/setup" element={<Setup />} />
           <Route
             path="*"
