@@ -890,7 +890,11 @@ export function Creator() {
             <h1>{p.name}</h1>
             <div className="creator-stats-bar">
               <span className="rating-pill">
-                <Star size={15} fill="#e59838" color="#e59838" />
+                <Star
+                  size={15}
+                  fill="var(--color-rose-gold-strong)"
+                  color="var(--color-rose-gold-strong)"
+                />
                 <strong>{avgRating}</strong>
                 <small>({reviews.length} đánh giá)</small>
               </span>

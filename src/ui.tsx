@@ -86,8 +86,12 @@ export function RatingStars({ rating }: { rating: number }) {
         <Star
           key={i}
           size={14}
-          fill={i <= rounded ? "#e59838" : "none"}
-          color={i <= rounded ? "#e59838" : "#c4bcb0"}
+          fill={i <= rounded ? "var(--color-rose-gold-strong)" : "none"}
+          color={
+            i <= rounded
+              ? "var(--color-rose-gold-strong)"
+              : "var(--color-muted)"
+          }
         />
       ))}
     </div>
@@ -145,7 +149,11 @@ export function ProviderCard({ p }: { p: Provider }) {
         <span className="rating-pill">
           {rating ? (
             <>
-              <Star size={13} fill="#e59838" color="#e59838" />
+              <Star
+                size={13}
+                fill="var(--color-rose-gold-strong)"
+                color="var(--color-rose-gold-strong)"
+              />
               <strong>{rating}</strong>
               <small>({reviews.length || 12})</small>
             </>
