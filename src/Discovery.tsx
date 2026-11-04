@@ -870,6 +870,7 @@ export function Creator() {
     setBusy(true);
     setError("");
     setSlots([]);
+    if (p) void track("view_slots", { service_type: p.category });
     void rpc<{ starts_at: string; ends_at: string }[]>("free_slots", {
       p_package: pkg.id,
       p_day: day,
@@ -889,7 +890,7 @@ export function Creator() {
     return () => {
       live = false;
     };
-  }, [pkg?.id, day]);
+  }, [pkg?.id, day, p?.category]);
 
   if (loading) return <Loading />;
   if (!p)
@@ -1074,7 +1075,9 @@ export function Creator() {
                       key={k.id}
                       onClick={() => {
                         setSelected(k.id);
-                        void track("package_view");
+                        void track("package_view", {
+                          service_type: p.category,
+                        });
                       }}
                     >
                       <div className="package-top">
@@ -1114,6 +1117,9 @@ export function Creator() {
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelected(k.id);
+                          void track("package_view", {
+                            service_type: p.category,
+                          });
                         }}
                       >
                         {pkg?.id === k.id ? "Đã chọn gói này" : "Chọn gói này"}

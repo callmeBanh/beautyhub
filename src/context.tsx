@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import type { User } from "@supabase/supabase-js";
-import { db, listProviders } from "./api";
+import { db, listProviders, track } from "./api";
 import {
   errorText,
   type Profile,
@@ -79,14 +79,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!db) return;
     const {
       data: { subscription },
-    } = db.auth.onAuthStateChange((_event, u) => {
+    } = db.auth.onAuthStateChange((event, u) => {
       generation.current++;
       setAuthLoading(true);
       setProfile(null);
       setProviders([]);
       setUser(u?.user || null);
       if (!u) setProfile(null);
-      setTimeout(() => void refresh(), 0);
+      setTimeout(() => {
+        if (event === "SIGNED_IN" && u?.user) {
+          const createdAt = Date.parse(u.user.created_at);
+          const lastSignInAt = Date.parse(u.user.last_sign_in_at || "");
+          const isNewAccount =
+            Number.isFinite(createdAt) &&
+            Number.isFinite(lastSignInAt) &&
+            Math.abs(lastSignInAt - createdAt) < 1000;
+          void track(isNewAccount ? "sign_up" : "login");
+        }
+        void refresh();
+      }, 0);
     });
     return () => subscription.unsubscribe();
   }, []);
