@@ -3,8 +3,10 @@ import {
   safeNext,
   effectiveStatus,
   filterProviders,
+  persistedReviews,
   type Booking,
   type Provider,
+  type Review,
 } from "../src/domain";
 import { resolveBankCode, buildVietQrUrl } from "../src/vietqr";
 describe("customer journey", () => {
@@ -43,6 +45,26 @@ describe("customer journey", () => {
     expect(filterProviders([p], { ...f, district: "Quận 3" })).toHaveLength(0);
     expect(filterProviders([p], { ...f, budget: 500000 })).toHaveLength(0);
     expect(filterProviders([{ ...p, status: "PENDING" }], f)).toHaveLength(0);
+  });
+  it("only treats persisted reviews as real rating data", () => {
+    const review = (id: string, hidden = false): Review => ({
+      id,
+      booking_id: "booking",
+      provider_id: "provider",
+      author_name: "Khách",
+      rating: 5,
+      text: "Đánh giá kiểm thử",
+      hidden,
+      created_at: "2026-11-04T00:00:00Z",
+    });
+
+    expect(
+      persistedReviews([
+        review("demo-review"),
+        review("11111111-1111-4111-8111-111111111111"),
+        review("22222222-2222-4222-8222-222222222222", true),
+      ]).map((item) => item.id),
+    ).toEqual(["11111111-1111-4111-8111-111111111111"]);
   });
   it("resolves bank names and builds standardized VietQR URL", () => {
     expect(resolveBankCode("Ngân hàng TMCP Quân Đội (MB)")).toBe("mbbank");

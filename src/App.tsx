@@ -145,7 +145,7 @@ function Footer() {
           <Link to="/policies">Chính sách cọc & Hoàn tiền 100%</Link>
           <Link to="/studio">Không gian dành cho Creator</Link>
           <a href="https://zalo.me/beautyhub" target="_blank" rel="noreferrer">
-            Hỗ trợ trực tuyến 24/7 (Zalo)
+            Kênh hỗ trợ
           </a>
         </div>
       </div>

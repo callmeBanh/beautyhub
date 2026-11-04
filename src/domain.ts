@@ -237,6 +237,11 @@ export function paymentReference(id: string) {
 export function minPrice(p: Provider) {
   return Math.min(...p.packages.filter((x) => x.active).map((x) => x.price));
 }
+export function persistedReviews(reviews: Review[] = []) {
+  return reviews.filter(
+    (review) => !review.hidden && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(review.id),
+  );
+}
 export function filterProviders(
   providers: Provider[],
   filters: {
@@ -413,7 +418,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   },
   {
     question: "Bao lâu sau buổi chụp tôi sẽ nhận được ảnh hoàn thiện?",
-    answer: "Thời gian bàn giao được cam kết rõ ràng trong từng gói dịch vụ (thông thường từ 3 đến 5 ngày làm việc). Bạn sẽ nhận toàn bộ file ảnh gốc chất lượng cao cùng số lượng ảnh chỉnh màu & da chuyên nghiệp theo cam kết của gói.",
+    answer: "Thông tin bàn giao được hiển thị trong từng gói dịch vụ khi creator cung cấp.",
   },
   {
     question: "Makeup Artist và Photographer có nhận đến tận nơi / nhà riêng không?",
@@ -421,7 +426,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   },
   {
     question: "BeautyHub kiểm duyệt chất lượng Creator như thế nào?",
-    answer: "100% Creator trên BeautyHub đều phải trải qua quy trình xác minh danh tính, kiểm tra quyền sở hữu tác phẩm thực tế (không dùng ảnh mạng/minh họa ảo), và cam kết tuân thủ tiêu chuẩn phục vụ chuyên nghiệp trước khi được cấp huy hiệu Đã xác minh.",
+    answer: "BeautyHub xem xét hồ sơ creator trước khi duyệt. Việc duyệt hồ sơ không phải là eKYC hay chứng nhận chất lượng dịch vụ.",
   },
 ];
 
