@@ -326,6 +326,14 @@ export function errorText(e: unknown) {
     typeof e === "object" && e && "message" in e
       ? String(e.message)
       : String(e);
+  const code =
+    typeof e === "object" && e && "code" in e ? String(e.code) : "";
+  if (
+    code === "PGRST202" &&
+    /public\.save_package_details/i.test(msg)
+  ) {
+    return "Cơ sở dữ liệu chưa có chức năng lưu chi tiết gói. Quản trị viên cần áp dụng migration 202611040001_package_details.sql trên Supabase rồi làm mới schema cache.";
+  }
   if (/fetch|network/i.test(msg))
     return "Không kết nối được. Thông tin bạn nhập vẫn được giữ; hãy kiểm tra mạng và thử lại.";
   if (/23505|duplicate key/.test(msg))

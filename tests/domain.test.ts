@@ -5,6 +5,7 @@ import {
   filterProviders,
   persistedReviews,
   validatePackageDetails,
+  errorText,
   type Booking,
   type Provider,
   type Review,
@@ -104,6 +105,21 @@ describe("customer journey", () => {
         customer_benefits: null,
       }),
     ).toContain("200 ký tự");
+  });
+  it("explains how to resolve a missing package-details RPC", () => {
+    expect(
+      errorText({
+        code: "PGRST202",
+        message:
+          "Could not find the function public.save_package_details(p_active) in the schema cache",
+      }),
+    ).toContain("202611040001_package_details.sql");
+    expect(
+      errorText({
+        code: "PGRST202",
+        message: "Could not find the function public.other_rpc()",
+      }),
+    ).toContain("public.other_rpc()");
   });
   it("resolves bank names and builds standardized VietQR URL", () => {
     expect(resolveBankCode("Ngân hàng TMCP Quân Đội (MB)")).toBe("mbbank");
