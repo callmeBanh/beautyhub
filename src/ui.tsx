@@ -8,7 +8,6 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Clock,
   HelpCircle,
   MessageCircle,
   Phone,
@@ -17,7 +16,14 @@ import {
   Star,
   X,
 } from "lucide-react";
-import { labels, money, minPrice, type Provider, type FaqItem } from "./domain";
+import {
+  labels,
+  money,
+  minPrice,
+  persistedReviews,
+  type Provider,
+  type FaqItem,
+} from "./domain";
 
 export function Empty({
   title,
@@ -86,8 +92,12 @@ export function RatingStars({ rating }: { rating: number }) {
         <Star
           key={i}
           size={14}
-          fill={i <= rounded ? "#e59838" : "none"}
-          color={i <= rounded ? "#e59838" : "#c4bcb0"}
+          fill={i <= rounded ? "var(--color-rose-gold-strong)" : "none"}
+          color={
+            i <= rounded
+              ? "var(--color-rose-gold-strong)"
+              : "var(--color-muted)"
+          }
         />
       ))}
     </div>
@@ -95,14 +105,12 @@ export function RatingStars({ rating }: { rating: number }) {
 }
 
 export function ProviderCard({ p }: { p: Provider }) {
-  const reviews = p.reviews.filter((r) => !r.hidden);
+  const reviews = persistedReviews(p.reviews);
   const rating = reviews.length
     ? (
         reviews.reduce((a, r) => a + Number(r.rating), 0) / reviews.length
       ).toFixed(1)
-    : p.rating_score
-      ? p.rating_score.toFixed(1)
-      : null;
+    : null;
 
   const primaryImage =
     p.portfolio_assets?.find((a) => a.approved && a.url)?.url ||
@@ -128,13 +136,8 @@ export function ProviderCard({ p }: { p: Provider }) {
         <div className="card-overlay-badges">
           <span className="verified">
             <ShieldCheck size={13} />
-            Đã xác minh
+            Hồ sơ đã duyệt
           </span>
-          {p.response_time && (
-            <span className="response-badge">
-              <Clock size={11} /> ~{p.response_time}
-            </span>
-          )}
         </div>
         <span className="card-arrow" aria-hidden="true">
           <ArrowUpRight size={18} />
@@ -145,12 +148,16 @@ export function ProviderCard({ p }: { p: Provider }) {
         <span className="rating-pill">
           {rating ? (
             <>
-              <Star size={13} fill="#e59838" color="#e59838" />
+              <Star
+                size={13}
+                fill="var(--color-rose-gold-strong)"
+                color="var(--color-rose-gold-strong)"
+              />
               <strong>{rating}</strong>
-              <small>({reviews.length || 12})</small>
+              <small>({reviews.length})</small>
             </>
           ) : (
-            <span className="muted">Mới tham gia</span>
+            <span className="muted">Chưa có đánh giá</span>
           )}
         </span>
       </div>
@@ -162,7 +169,6 @@ export function ProviderCard({ p }: { p: Provider }) {
         <span className="dot-sep">·</span>
         <span>{p.districts.slice(0, 2).join(", ")}</span>
       </p>
-      <small className="completed-line">{p.completed_count || 50}+ booking hoàn thành</small>
       <div className="tags">
         {p.styles.slice(0, 3).map((s) => (
           <span key={s}>{s}</span>
@@ -287,7 +293,7 @@ export function FloatingContact({ supportUrl }: { supportUrl?: string }) {
       >
         <span className="floating-ping" />
         <MessageCircle size={20} />
-        <span className="floating-text">Hỗ trợ 24/7</span>
+        <span className="floating-text">Liên hệ hỗ trợ</span>
       </a>
     </div>
   );
@@ -368,7 +374,7 @@ export function Steps() {
         [
           "01",
           "Chọn gu & Xem tác phẩm thật",
-          "Duyệt các bộ ảnh và layout thật 100%, biết rõ giá niêm yết và thời gian còn trống.",
+          "Xem portfolio, giá niêm yết và lịch trống do creator cung cấp.",
         ],
         [
           "02",
@@ -383,7 +389,7 @@ export function Steps() {
         [
           "04",
           "Nhận ảnh hoàn thiện & Đánh giá",
-          "Bàn giao toàn bộ ảnh gốc và ảnh chỉnh màu đúng hạn. Đánh giá chất lượng 4 tiêu chí.",
+          "Xem quyền lợi và thời gian bàn giao được nêu trong gói dịch vụ.",
         ],
       ].map(([n, t, d]) => (
         <article key={n} className="stagger-in">

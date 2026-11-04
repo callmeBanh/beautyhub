@@ -33,6 +33,15 @@ import { Home, Explore, Creator } from "./Discovery";
 import { Checkout, BookingDetail, Bookings } from "./Bookings";
 import { Studio } from "./Studio";
 import { Admin } from "./Admin";
+import { Privacy, Terms } from "./Legal";
+import {
+  analyticsConfigured,
+  consentSettingsEvent,
+  getAnalyticsConsent,
+  initializeAnalytics,
+  setAnalyticsConsent,
+  trackPageView,
+} from "./ga";
 
 function Header() {
   const { user, profile, toast } = useApp();
@@ -145,7 +154,7 @@ function Footer() {
           <Link to="/policies">Chính sách cọc & Hoàn tiền 100%</Link>
           <Link to="/studio">Không gian dành cho Creator</Link>
           <a href="https://zalo.me/beautyhub" target="_blank" rel="noreferrer">
-            Hỗ trợ trực tuyến 24/7 (Zalo)
+            Kênh hỗ trợ
           </a>
         </div>
       </div>
@@ -154,12 +163,93 @@ function Footer() {
         <small className="footer-legal">
           © 2026 BeautyHub Vietnam · Nền tảng kết nối sáng tạo & làm đẹp uy tín
           tại TP.HCM. Bảo vệ dữ liệu theo Nghị định 13/2023/NĐ-CP.
+          {" · "}
+          <Link to="/terms">Điều khoản</Link>
+          {" · "}
+          <Link to="/privacy">Quyền riêng tư</Link>
         </small>
         <small className="footer-meta">
           TP.HCM · Version 1.0 Production · An tâm trải nghiệm
+          {" · "}
+          <a
+            href="#cookie-settings"
+            onClick={(event) => {
+              event.preventDefault();
+              window.dispatchEvent(new Event(consentSettingsEvent));
+            }}
+          >
+            Tùy chọn cookie
+          </a>
         </small>
       </div>
     </footer>
+  );
+}
+
+function CookieConsent() {
+  const [open, setOpen] = useState(false);
+  const [choice, setChoice] = useState<boolean | null>(null);
+  const [storageWarning, setStorageWarning] = useState(false);
+
+  useEffect(() => {
+    const saved = getAnalyticsConsent();
+    setChoice(saved);
+    setOpen(analyticsConfigured() && saved === null);
+    const openSettings = () => setOpen(true);
+    window.addEventListener(consentSettingsEvent, openSettings);
+    return () => window.removeEventListener(consentSettingsEvent, openSettings);
+  }, []);
+
+  if (!open) return null;
+  const choose = (accepted: boolean) => {
+    const persisted = setAnalyticsConsent(accepted);
+    setChoice(accepted);
+    setStorageWarning(!persisted);
+    setOpen(!persisted);
+  };
+
+  return (
+    <aside className="cookie-consent" role="region" aria-label="Tùy chọn cookie">
+      <div>
+        <strong>Tùy chọn cookie</strong>
+        {analyticsConfigured() ? (
+          <p>
+            BeautyHub chỉ bật Google Analytics sau khi bạn đồng ý. Bạn có thể
+            từ chối hoặc đổi lựa chọn bất cứ lúc nào ở chân trang.
+          </p>
+        ) : (
+          <p>
+            Google Analytics chưa được cấu hình; ứng dụng không tải công cụ
+            analytics.
+          </p>
+        )}
+        {storageWarning && (
+          <Alert>
+            Không thể lưu lựa chọn trong trình duyệt. Lựa chọn chỉ có hiệu lực
+            trong phiên hiện tại.
+          </Alert>
+        )}
+      </div>
+      <div className="cookie-consent-actions">
+        <button className="btn small" onClick={() => choose(true)}>
+          Chấp nhận
+        </button>
+        <button
+          className="btn small ghost"
+          onClick={() => choose(false)}
+        >
+          Từ chối
+        </button>
+        {choice !== null && (
+          <button
+            className="text-button"
+            onClick={() => setOpen(false)}
+          >
+            Đóng
+          </button>
+        )}
+      </div>
+    </aside>
   );
 }
 
@@ -695,17 +785,20 @@ function Setup() {
 export default function App() {
   const location = useLocation();
   const { error, user, settings } = useApp();
+  useEffect(() => initializeAnalytics(), []);
   useEffect(() => {
-    if (!user) return;
     const path = location.pathname;
-    if (path === "/explore") void track("search");
-    else if (path.startsWith("/creators/")) void track("provider_view");
-    else if (path.startsWith("/checkout/")) void track("booking_started");
+    if (path === "/explore" && user) void track("search");
+    else if (path.startsWith("/creators/"))
+      void track("provider_view", {}, Boolean(user));
+    else if (path.startsWith("/checkout/") && user)
+      void track("booking_started");
   }, [location.pathname, location.search, user?.id]);
   const [offline, setOffline] = useState(!navigator.onLine);
   useEffect(() => {
     window.scrollTo(0, 0);
     document.title = "BeautyHub — Đúng người, đúng khoảnh khắc";
+    trackPageView(location.pathname);
   }, [location.pathname]);
   useEffect(() => {
     const on = () => setOffline(!navigator.onLine);
@@ -797,6 +890,8 @@ export default function App() {
           />
           <Route path="/how-it-works" element={<How />} />
           <Route path="/policies" element={<Policies />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
           <Route path="/setup" element={<Setup />} />
           <Route
             path="*"
@@ -811,6 +906,7 @@ export default function App() {
         </Routes>
       </main>
       <Footer />
+      <CookieConsent />
       <FloatingContact supportUrl={settings?.support_url} />
       <MobileBottomNav />
     </>

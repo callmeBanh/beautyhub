@@ -42,7 +42,9 @@ import {
   localDate,
   minPrice,
   money,
+  persistedReviews,
   timeOnly,
+  type Package,
   type Provider,
 } from "./domain";
 import {
@@ -134,7 +136,7 @@ export function Home() {
         <div className="hero-copy">
           <div className="hero-pill-badge">
             <span className="star-dot">★</span>
-            <span>4.9/5 từ 500+ khách hàng tại TP.HCM</span>
+            <span>Kết nối dịch vụ sáng tạo tại TP.HCM</span>
           </div>
           <h1>
             Đúng gu.
@@ -150,10 +152,10 @@ export function Home() {
           </p>
           <SearchBar />
         </div>
-        <div className="hero-caption">Tác phẩm xác minh · BeautyHub Network</div>
+        <div className="hero-caption">Portfolio creator · BeautyHub Network</div>
         <div className="hero-trust">
           <ShieldCheck size={18} />
-          <span>100% Creator kiểm duyệt tay nghề · Giữ lịch chủ động</span>
+          <span>Hồ sơ creator được xem xét trước khi duyệt</span>
         </div>
       </section>
 
@@ -170,7 +172,7 @@ export function Home() {
         </span>
         <span>
           <Camera size={17} />
-          100% Ảnh tác phẩm thật & xác minh
+          Portfolio do creator cung cấp
         </span>
         <span>
           <ShieldCheck size={17} />
@@ -178,7 +180,7 @@ export function Home() {
         </span>
         <span>
           <Clock size={17} />
-          Phản hồi lịch nhanh trong 15-30 phút
+          Thông tin dịch vụ trên từng hồ sơ
         </span>
       </div>
 
@@ -328,10 +330,10 @@ export function Home() {
             <div className="guarantee-icon">
               <Award size={28} />
             </div>
-            <h3>100% Tác phẩm thật</h3>
+            <h3>Portfolio creator</h3>
             <p>
-              Mọi hình ảnh và layout trong hồ sơ đều do chính Creator thực hiện,
-              được đội ngũ BeautyHub kiểm duyệt kỹ lưỡng trước khi mở nhận lịch.
+              Xem các hình ảnh, layout và phong cách do creator cung cấp trong
+              hồ sơ.
             </p>
           </div>
           <div className="guarantee-card">
@@ -358,10 +360,9 @@ export function Home() {
             <div className="guarantee-icon">
               <MessageCircle size={28} />
             </div>
-            <h3>Hỗ trợ đồng hành 24/7</h3>
+            <h3>Kênh hỗ trợ</h3>
             <p>
-              Kênh hỗ trợ trực tuyến qua Zalo và Hotline luôn sẵn sàng hỗ trợ đổi
-              lịch, xử lý thắc mắc và đồng hành cùng bạn đến khi hoàn tất.
+              Thông tin liên hệ hỗ trợ được cung cấp trong ứng dụng khi sẵn sàng.
             </p>
           </div>
         </div>
@@ -392,12 +393,12 @@ export function Home() {
         <div className="section-title center">
           <span className="eyebrow">CẢM NHẬN KHÁCH HÀNG</span>
           <h2>Những khoảnh khắc đáng nhớ</h2>
-          <p>Lắng nghe cảm nhận từ những bạn trẻ đã trải nghiệm dịch vụ tại BeautyHub.</p>
+          <p>Nội dung mẫu minh họa cho giao diện demo.</p>
         </div>
         <div className="testimonials-grid">
           {TESTIMONIALS.map((t) => (
             <div key={t.id} className="testimonial-card">
-              <RatingStars rating={t.rating} />
+              <small className="muted">Nội dung minh họa</small>
               <p className="testimonial-text">"{t.text}"</p>
               <div className="testimonial-author">
                 <img src={t.avatar} alt={t.author} className="author-avatar" />
@@ -436,7 +437,7 @@ export function Home() {
             <em>khoảnh khắc của bạn.</em>
           </h2>
           <p>
-            Hàng chục concept thịnh hành và chuyên gia đang sẵn sàng đồng hành cùng bạn.
+            Khám phá concept và tìm creator phù hợp với phong cách của bạn.
           </p>
           <Link className="btn" to="/explore">
             Tìm Creator ngay <ArrowRight size={16} />
@@ -765,7 +766,7 @@ export function Explore() {
               <p>
                 {providers.length
                   ? "Hãy thử đổi ngày thực hiện, chọn rộng khu vực hoặc nới ngân sách để có thêm lựa chọn tuyệt vời."
-                  : "Hồ sơ Creator luôn được BeautyHub xác minh tay nghề và ảnh thực tế trước khi xuất hiện."}
+                  : "Danh sách hồ sơ creator đang được cập nhật."}
               </p>
               <button className="btn ghost" onClick={() => setParams({})}>
                 Xem tất cả Creator
@@ -779,9 +780,71 @@ export function Explore() {
 }
 
 function average(p: Provider) {
-  return p.reviews.length
-    ? p.reviews.reduce((s, r) => s + Number(r.rating), 0) / p.reviews.length
-    : p.rating_score || 0;
+  const reviews = persistedReviews(p.reviews);
+  return reviews.length
+    ? reviews.reduce((s, r) => s + Number(r.rating), 0) / reviews.length
+    : 0;
+}
+
+function PackageFacts({
+  pkg,
+  category,
+  compact = false,
+}: {
+  pkg: Package;
+  category: string;
+  compact?: boolean;
+}) {
+  const isPhotographer = category === "Photographer";
+  const includedItems = pkg.included_items || [];
+  const customerBenefits = pkg.customer_benefits || [];
+  const hasPhotoCounts =
+    isPhotographer &&
+    (pkg.original_photo_count != null ||
+      pkg.edited_photo_count != null ||
+      pkg.revision_count != null);
+
+  if (!hasPhotoCounts && !includedItems.length && !customerBenefits.length) {
+    return null;
+  }
+
+  return (
+    <div className={`package-extra-details${compact ? " compact" : ""}`}>
+      {hasPhotoCounts && (
+        <div className="package-extra-counts">
+          {pkg.original_photo_count != null && (
+            <span>{pkg.original_photo_count} ảnh gốc</span>
+          )}
+          {pkg.edited_photo_count != null && (
+            <span>{pkg.edited_photo_count} ảnh chỉnh sửa</span>
+          )}
+          {pkg.revision_count != null && (
+            <span>{pkg.revision_count} lần chỉnh sửa</span>
+          )}
+        </div>
+      )}
+      {includedItems.length > 0 && (
+        <div>
+          <strong>Gói gồm gì</strong>
+          <ul>
+            {includedItems.map((item, index) => (
+              <li key={`${index}-${item}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {customerBenefits.length > 0 && (
+        <div>
+          <strong>Quyền lợi của khách</strong>
+          <ul>
+            {customerBenefits.map((item, index) => (
+              <li key={`${index}-${item}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function Creator() {
@@ -807,6 +870,7 @@ export function Creator() {
     setBusy(true);
     setError("");
     setSlots([]);
+    if (p) void track("view_slots", { service_type: p.category });
     void rpc<{ starts_at: string; ends_at: string }[]>("free_slots", {
       p_package: pkg.id,
       p_day: day,
@@ -826,7 +890,7 @@ export function Creator() {
     return () => {
       live = false;
     };
-  }, [pkg?.id, day]);
+  }, [pkg?.id, day, p?.category]);
 
   if (loading) return <Loading />;
   if (!p)
@@ -843,13 +907,13 @@ export function Creator() {
 
   const assets = p.portfolio_assets?.filter((a) => a.approved && a.url) || [];
   const reviews = p.reviews?.filter((r) => !r.hidden) || [];
-  const avgRating = reviews.length
+  const ratedReviews = persistedReviews(reviews);
+  const avgRating = ratedReviews.length
     ? (
-        reviews.reduce((a, r) => a + Number(r.rating), 0) / reviews.length
+        ratedReviews.reduce((a, r) => a + Number(r.rating), 0) /
+        ratedReviews.length
       ).toFixed(1)
-    : p.rating_score
-      ? p.rating_score.toFixed(1)
-      : "5.0";
+    : null;
 
   const depositAmount = pkg ? Math.ceil(pkg.price * 0.3) : 0;
   const remainingAmount = pkg ? pkg.price - depositAmount : 0;
@@ -879,26 +943,23 @@ export function Creator() {
               </span>
               <span className="verified">
                 <ShieldCheck size={14} />
-                BeautyHub xác minh tay nghề
+                Hồ sơ đã duyệt
               </span>
-              {p.response_time && (
-                <span className="response-badge">
-                  <Clock size={12} /> Phản hồi ~{p.response_time}
-                </span>
-              )}
             </div>
             <h1>{p.name}</h1>
             <div className="creator-stats-bar">
-              <span className="rating-pill">
-                <Star size={15} fill="#e59838" color="#e59838" />
-                <strong>{avgRating}</strong>
-                <small>({reviews.length} đánh giá)</small>
-              </span>
-              <span className="sep">•</span>
-              <span>
-                <CheckCircle2 size={15} /> {p.completed_count || 50}+ booking hoàn thành
-              </span>
-              <span className="sep">•</span>
+              {avgRating && (
+                <span className="rating-pill">
+                  <Star
+                    size={15}
+                    fill="var(--color-rose-gold-strong)"
+                    color="var(--color-rose-gold-strong)"
+                  />
+                  <strong>{avgRating}</strong>
+                  <small>({ratedReviews.length} đánh giá)</small>
+                </span>
+              )}
+              {avgRating && <span className="sep">•</span>}
               <span>
                 <MapPin size={15} /> {p.districts.join(", ")}
               </span>
@@ -1014,7 +1075,9 @@ export function Creator() {
                       key={k.id}
                       onClick={() => {
                         setSelected(k.id);
-                        void track("package_view");
+                        void track("package_view", {
+                          service_type: p.category,
+                        });
                       }}
                     >
                       <div className="package-top">
@@ -1036,6 +1099,7 @@ export function Creator() {
                           <Calendar size={13} /> Giao sản phẩm: {k.delivery_days} ngày
                         </span>
                       </div>
+                      <PackageFacts pkg={k} category={p.category} />
                       <div className="package-details-box">
                         <div className="detail-line">
                           <strong>Bao gồm:</strong>
@@ -1053,6 +1117,9 @@ export function Creator() {
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelected(k.id);
+                          void track("package_view", {
+                            service_type: p.category,
+                          });
                         }}
                       >
                         {pkg?.id === k.id ? "Đã chọn gói này" : "Chọn gói này"}
@@ -1067,41 +1134,17 @@ export function Creator() {
           {activeTab === "reviews" && (
             <section className="profile-section">
               <div className="reviews-summary-card">
-                <div className="score-big">
-                  <strong>{avgRating}</strong>
-                  <RatingStars rating={Number(avgRating)} />
-                  <small>Dựa trên {reviews.length || 10}+ đánh giá từ khách hàng</small>
-                </div>
-                <div className="criteria-list">
-                  <div className="criteria-row">
-                    <span>Đúng giờ & Tác phong</span>
-                    <div className="bar-track">
-                      <div className="bar-fill" style={{ width: "98%" }} />
-                    </div>
-                    <strong>5.0</strong>
+                {avgRating ? (
+                  <div className="score-big">
+                    <strong>{avgRating}</strong>
+                    <RatingStars rating={Number(avgRating)} />
+                    <small>Dựa trên {ratedReviews.length} đánh giá</small>
                   </div>
-                  <div className="criteria-row">
-                    <span>Tay nghề & Thẩm mỹ</span>
-                    <div className="bar-track">
-                      <div className="bar-fill" style={{ width: "96%" }} />
-                    </div>
-                    <strong>4.9</strong>
-                  </div>
-                  <div className="criteria-row">
-                    <span>Nhiệt tình & Hỗ trợ</span>
-                    <div className="bar-track">
-                      <div className="bar-fill" style={{ width: "100%" }} />
-                    </div>
-                    <strong>5.0</strong>
-                  </div>
-                  <div className="criteria-row">
-                    <span>Thời gian bàn giao</span>
-                    <div className="bar-track">
-                      <div className="bar-fill" style={{ width: "95%" }} />
-                    </div>
-                    <strong>4.9</strong>
-                  </div>
-                </div>
+                ) : (
+                  <p className="muted">
+                    Chưa có đánh giá thực từ booking hoàn thành.
+                  </p>
+                )}
               </div>
 
               <div className="reviews-list">
@@ -1111,11 +1154,17 @@ export function Creator() {
                       <div className="review-header">
                         <div>
                           <strong>{r.author_name}</strong>
-                          <span className="verified-booking">
-                            <CheckCircle2 size={12} /> Đã hoàn thành booking
-                          </span>
+                          {persistedReviews([r]).length ? (
+                            <span className="verified-booking">
+                              <CheckCircle2 size={12} /> Đã hoàn thành booking
+                            </span>
+                          ) : (
+                            <span className="muted">Nội dung minh họa</span>
+                          )}
                         </div>
-                        <RatingStars rating={Number(r.rating)} />
+                        {persistedReviews([r]).length > 0 && (
+                          <RatingStars rating={Number(r.rating)} />
+                        )}
                       </div>
                       <p className="review-text">{r.text}</p>
                     </article>
@@ -1179,6 +1228,8 @@ export function Creator() {
                   <span>{money(remainingAmount)}</span>
                 </div>
               </div>
+
+              <PackageFacts pkg={pkg} category={p.category} compact />
 
               <Field label="1. Chọn ngày bạn muốn">
                 <input

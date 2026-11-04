@@ -103,6 +103,36 @@ VALUES
   'Chi phí di chuyển liên tỉnh.', true
 ) ON CONFLICT (id) DO NOTHING;
 
+UPDATE public.packages AS package
+SET original_photo_count = details.original_photo_count,
+    edited_photo_count = details.edited_photo_count,
+    revision_count = details.revision_count,
+    included_items = details.included_items,
+    customer_benefits = details.customer_benefits
+FROM (VALUES
+  (
+    'c0000000-0000-0000-0000-000000000001'::uuid, 80, 15, 2,
+    jsonb_build_array('Chụp ngoại cảnh hoặc quán cà phê', '15 ảnh chỉnh màu và da', 'Giao toàn bộ file gốc'),
+    jsonb_build_array('Tư vấn concept trước buổi chụp', 'Hướng dẫn tạo dáng')
+  ),
+  (
+    'c0000000-0000-0000-0000-000000000002'::uuid, 24, 8, 1,
+    jsonb_build_array('Chụp ảnh profile tại studio', '8 ảnh chỉnh sửa', 'Tư vấn trang phục'),
+    jsonb_build_array('Hướng dẫn tạo dáng công sở', 'Chọn ảnh bàn giao cùng creator')
+  ),
+  (
+    'c0000000-0000-0000-0000-000000000003'::uuid, 0, 0, 0,
+    jsonb_build_array('Makeup dự tiệc', 'Tạo kiểu tóc', 'Dán mi giả'),
+    jsonb_build_array('Tư vấn layout theo trang phục', 'Vệ sinh dụng cụ trước khi sử dụng')
+  ),
+  (
+    'c0000000-0000-0000-0000-000000000004'::uuid, 0, 0, 0,
+    jsonb_build_array('Hai layout makeup', 'Làm tóc theo concept', 'Dặm phấn trong buổi chụp'),
+    jsonb_build_array('Tư vấn chuẩn bị da', 'Điều chỉnh layout theo ánh sáng')
+  )
+) AS details(id, original_photo_count, edited_photo_count, revision_count, included_items, customer_benefits)
+WHERE package.id = details.id;
+
 -- Khung giờ trống cho 14 ngày tới
 DO $$
 DECLARE
@@ -129,4 +159,3 @@ UNION ALL
 SELECT 'SETTINGS READY' as status, id::text::uuid, bank_name, ready::text FROM public.settings
 UNION ALL
 SELECT 'CREATOR APPROVED' as status, id, name, status FROM public.providers;
-

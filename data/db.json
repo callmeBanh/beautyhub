@@ -29,6 +29,12 @@
           "name": "Chân dung tinh giản",
           "duration": 60,
           "deliverables": "10 ảnh chỉnh màu",
+          "delivery_days": 3,
+          "original_photo_count": 30,
+          "edited_photo_count": 10,
+          "revision_count": 1,
+          "included_items": ["Chụp ngoại cảnh hoặc studio", "Giao file gốc", "10 ảnh chỉnh màu"],
+          "customer_benefits": ["Tư vấn concept", "Hướng dẫn tạo dáng"],
           "price": 900000
         },
         {
@@ -36,6 +42,12 @@
           "name": "Signature Story",
           "duration": 120,
           "deliverables": "25 ảnh chỉnh + 1 reel",
+          "delivery_days": 5,
+          "original_photo_count": 70,
+          "edited_photo_count": 25,
+          "revision_count": 2,
+          "included_items": ["Tư vấn địa điểm", "25 ảnh chỉnh sửa", "Video ngắn dạng reel"],
+          "customer_benefits": ["Tư vấn concept cá nhân hóa", "Hướng dẫn tạo dáng theo cặp"],
           "price": 1500000
         }
       ],
@@ -87,6 +99,12 @@
           "name": "Street Muse",
           "duration": 90,
           "deliverables": "18 ảnh chỉnh màu",
+          "delivery_days": 4,
+          "original_photo_count": 60,
+          "edited_photo_count": 18,
+          "revision_count": 2,
+          "included_items": ["Chụp dạo phố hoặc quán cà phê", "Giao file gốc", "18 ảnh chỉnh màu phim"],
+          "customer_benefits": ["Tư vấn concept trước buổi chụp", "Hướng dẫn tạo dáng"],
           "price": 1200000
         },
         {
@@ -94,6 +112,12 @@
           "name": "Cinematic Day",
           "duration": 180,
           "deliverables": "35 ảnh + video ngắn",
+          "delivery_days": 7,
+          "original_photo_count": 100,
+          "edited_photo_count": 35,
+          "revision_count": 3,
+          "included_items": ["Chụp ngoại cảnh theo concept", "35 ảnh chỉnh màu", "Video ngắn"],
+          "customer_benefits": ["Tư vấn địa điểm và trang phục", "Hướng dẫn tạo dáng trong buổi chụp"],
           "price": 2300000
         }
       ],
@@ -144,6 +168,12 @@
           "name": "Photoshoot Glow",
           "duration": 75,
           "deliverables": "Makeup + làm tóc cơ bản",
+          "delivery_days": 0,
+          "original_photo_count": 0,
+          "edited_photo_count": 0,
+          "revision_count": 0,
+          "included_items": ["Makeup photoshoot", "Làm tóc cơ bản", "Dặm phấn trong buổi chụp"],
+          "customer_benefits": ["Tư vấn layout theo concept", "Vệ sinh dụng cụ trước khi sử dụng"],
           "price": 750000
         },
         {
@@ -151,6 +181,12 @@
           "name": "Event Ready",
           "duration": 100,
           "deliverables": "Makeup + tóc + touch-up kit",
+          "delivery_days": 0,
+          "original_photo_count": 0,
+          "edited_photo_count": 0,
+          "revision_count": 0,
+          "included_items": ["Makeup dự tiệc", "Tạo kiểu tóc", "Bộ dặm makeup"],
+          "customer_benefits": ["Tư vấn tone theo trang phục", "Hướng dẫn chuẩn bị da"],
           "price": 1100000
         }
       ],
@@ -201,6 +237,12 @@
           "name": "Editorial Look",
           "duration": 90,
           "deliverables": "Makeup concept + tóc",
+          "delivery_days": 0,
+          "original_photo_count": 0,
+          "edited_photo_count": 0,
+          "revision_count": 0,
+          "included_items": ["Makeup editorial", "Tạo kiểu tóc theo concept", "Dặm makeup trong buổi chụp"],
+          "customer_benefits": ["Tư vấn layout theo ánh sáng", "Vệ sinh dụng cụ trước khi sử dụng"],
           "price": 950000
         },
         {
@@ -208,6 +250,12 @@
           "name": "Party Statement",
           "duration": 75,
           "deliverables": "Makeup + tóc cơ bản",
+          "delivery_days": 0,
+          "original_photo_count": 0,
+          "edited_photo_count": 0,
+          "revision_count": 0,
+          "included_items": ["Makeup dự tiệc", "Làm tóc cơ bản", "Dán mi"],
+          "customer_benefits": ["Tư vấn theo trang phục", "Hướng dẫn chuẩn bị da"],
           "price": 800000
         }
       ],

@@ -1,5 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 import { enrichProviders, type Provider } from "./domain";
+import {
+  trackAnalyticsEvent,
+  type AnalyticsParameters,
+} from "./ga";
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
 export const configured = Boolean(url && key && /^https:\/\//.test(url));
@@ -58,8 +62,13 @@ export async function listProviders(): Promise<Provider[]> {
   }
   return enrichProviders(providers);
 }
-export async function track(event: string) {
-  if (!db) return;
+export async function track(
+  event: string,
+  parameters: AnalyticsParameters = {},
+  persistToSupabase = true,
+) {
+  trackAnalyticsEvent(event, parameters);
+  if (!db || !persistToSupabase) return;
   try {
     await db.rpc("track_event", { p_event: event });
   } catch {
