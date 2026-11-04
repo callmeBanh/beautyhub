@@ -3782,7 +3782,7 @@ td {
 /* Luxury Footer */
 .footer-luxury {
   background: var(--color-ink);
-  color: var(--color-muted);
+  color: var(--color-white);
   padding: 60px 40px 30px;
   margin-top: 60px;
 }
@@ -3803,12 +3803,12 @@ td {
 }
 .footer-tagline {
   font-size: 13px;
-  color: var(--color-muted);
+  color: var(--color-white);
   margin-bottom: 10px;
 }
 .footer-features {
   font-size: 12px;
-  color: var(--color-muted);
+  color: var(--color-white);
   margin-bottom: 16px;
 }
 .footer-socials {
@@ -3818,13 +3818,13 @@ td {
   font-size: 12px;
 }
 .footer-socials a {
-  color: var(--color-rose-gold-strong);
+  color: var(--color-blush);
 }
 .footer-socials a:hover {
   text-decoration: underline;
 }
 .footer-socials .sep {
-  color: var(--color-ink);
+  color: var(--color-blush);
 }
 .footer-links-col h4 {
   font-size: 14px;
@@ -3836,7 +3836,7 @@ td {
 .footer-links-col a {
   display: block;
   font-size: 13px;
-  color: var(--color-muted);
+  color: var(--color-white);
   margin-bottom: 10px;
   transition: color 0.2s;
 }
@@ -3851,13 +3851,13 @@ td {
   align-items: center;
   max-width: 1200px;
   margin: 0 auto;
-  color: var(--color-ink);
+  color: var(--color-white);
   font-size: 11px;
   flex-wrap: wrap;
   gap: 12px;
 }
 .footer-meta a {
-  color: var(--color-rose-gold-strong);
+  color: var(--color-blush);
 }
 .cookie-consent {
   position: fixed;
