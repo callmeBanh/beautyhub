@@ -85,10 +85,60 @@ export type Package = {
   duration: number;
   price: number;
   delivery_days: number;
+  original_photo_count?: number | null;
+  edited_photo_count?: number | null;
+  revision_count?: number | null;
+  included_items?: string[] | null;
+  customer_benefits?: string[] | null;
   includes: string;
   exclusions: string;
   active: boolean;
 };
+export type PackageDetailsInput = Pick<
+  Package,
+  | "original_photo_count"
+  | "edited_photo_count"
+  | "revision_count"
+  | "included_items"
+  | "customer_benefits"
+>;
+export function validatePackageDetails(details: PackageDetailsInput) {
+  const counts = [
+    ["Số ảnh gốc", details.original_photo_count, 500],
+    ["Số ảnh chỉnh sửa", details.edited_photo_count, 500],
+    ["Số lần chỉnh sửa", details.revision_count, 20],
+  ] as const;
+  for (const [label, value, max] of counts) {
+    if (
+      value != null &&
+      (!Number.isInteger(value) || value < 0 || value > max)
+    ) {
+      return `${label} phải là số nguyên từ 0 đến ${max}.`;
+    }
+  }
+
+  const lists = [
+    ["Gói gồm gì", details.included_items],
+    ["Quyền lợi của khách", details.customer_benefits],
+  ] as const;
+  for (const [label, items] of lists) {
+    if (items == null) continue;
+    if (!Array.isArray(items) || items.length > 20) {
+      return `${label} được nhập tối đa 20 mục.`;
+    }
+    if (
+      items.some(
+        (item) =>
+          typeof item !== "string" ||
+          item.trim().length === 0 ||
+          item.trim().length > 200,
+      )
+    ) {
+      return `Mỗi mục trong “${label}” phải có từ 1 đến 200 ký tự.`;
+    }
+  }
+  return null;
+}
 export type Asset = {
   id: string;
   provider_id: string;
@@ -520,6 +570,11 @@ export function enrichProviders(providers: Provider[]): Provider[] {
           duration: 90,
           price: 1200000,
           delivery_days: 4,
+          original_photo_count: 60,
+          edited_photo_count: 18,
+          revision_count: 2,
+          included_items: ["Chụp ngoại cảnh hoặc quán cà phê", "18 ảnh chỉnh màu phim", "Giao toàn bộ file gốc"],
+          customer_benefits: ["Tư vấn concept trước buổi chụp", "Hướng dẫn tạo dáng trong buổi chụp"],
           includes: "18 ảnh chỉnh màu phim chuẩn điện ảnh + trả toàn bộ file gốc.",
           exclusions: "Chi phí thức uống cá nhân tại quán cà phê.",
           active: true,
@@ -533,6 +588,11 @@ export function enrichProviders(providers: Provider[]): Provider[] {
           duration: 120,
           price: 1800000,
           delivery_days: 5,
+          original_photo_count: 90,
+          edited_photo_count: 25,
+          revision_count: 3,
+          included_items: ["Chụp ngoại cảnh cho cặp đôi", "25 ảnh chỉnh màu", "Video ngắn 30 giây"],
+          customer_benefits: ["Tư vấn địa điểm và concept", "Hướng dẫn tạo dáng cho hai người"],
           includes: "25 ảnh chỉnh màu + 1 video ngắn 30s lồng nhạc hoài niệm.",
           exclusions: "Vé vào cổng studio tư nhân (nếu chọn).",
           active: true,
@@ -574,6 +634,11 @@ export function enrichProviders(providers: Provider[]): Provider[] {
           duration: 90,
           price: 850000,
           delivery_days: 0,
+          original_photo_count: 0,
+          edited_photo_count: 0,
+          revision_count: 0,
+          included_items: ["Layout makeup editorial", "Tạo kiểu tóc theo concept", "Dặm phấn trong buổi chụp"],
+          customer_benefits: ["Tư vấn layout phù hợp concept", "Vệ sinh dụng cụ trước khi sử dụng"],
           includes: "Makeup sắc sảo + tạo kiểu tóc + hỗ trợ dặm phấn trong 1 giờ đầu buổi chụp.",
           exclusions: "Phụ kiện đặc biệt tự cung cấp.",
           active: true,
@@ -587,6 +652,11 @@ export function enrichProviders(providers: Provider[]): Provider[] {
           duration: 60,
           price: 550000,
           delivery_days: 0,
+          original_photo_count: 0,
+          edited_photo_count: 0,
+          revision_count: 0,
+          included_items: ["Makeup dự tiệc", "Dán mi chùm", "Làm tóc uốn hoặc búi"],
+          customer_benefits: ["Tư vấn tone makeup theo trang phục", "Hướng dẫn chuẩn bị da trước buổi hẹn"],
           includes: "Full makeup + dán mi chùm cao cấp + làm tóc uốn gợn/búi kiểu.",
           exclusions: "Phí di chuyển ngoại thành.",
           active: true,

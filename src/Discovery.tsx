@@ -44,6 +44,7 @@ import {
   money,
   persistedReviews,
   timeOnly,
+  type Package,
   type Provider,
 } from "./domain";
 import {
@@ -785,6 +786,67 @@ function average(p: Provider) {
     : 0;
 }
 
+function PackageFacts({
+  pkg,
+  category,
+  compact = false,
+}: {
+  pkg: Package;
+  category: string;
+  compact?: boolean;
+}) {
+  const isPhotographer = category === "Photographer";
+  const includedItems = pkg.included_items || [];
+  const customerBenefits = pkg.customer_benefits || [];
+  const hasPhotoCounts =
+    isPhotographer &&
+    (pkg.original_photo_count != null ||
+      pkg.edited_photo_count != null ||
+      pkg.revision_count != null);
+
+  if (!hasPhotoCounts && !includedItems.length && !customerBenefits.length) {
+    return null;
+  }
+
+  return (
+    <div className={`package-extra-details${compact ? " compact" : ""}`}>
+      {hasPhotoCounts && (
+        <div className="package-extra-counts">
+          {pkg.original_photo_count != null && (
+            <span>{pkg.original_photo_count} ảnh gốc</span>
+          )}
+          {pkg.edited_photo_count != null && (
+            <span>{pkg.edited_photo_count} ảnh chỉnh sửa</span>
+          )}
+          {pkg.revision_count != null && (
+            <span>{pkg.revision_count} lần chỉnh sửa</span>
+          )}
+        </div>
+      )}
+      {includedItems.length > 0 && (
+        <div>
+          <strong>Gói gồm gì</strong>
+          <ul>
+            {includedItems.map((item, index) => (
+              <li key={`${index}-${item}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {customerBenefits.length > 0 && (
+        <div>
+          <strong>Quyền lợi của khách</strong>
+          <ul>
+            {customerBenefits.map((item, index) => (
+              <li key={`${index}-${item}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Creator() {
   const { slug } = useParams();
   const { providers, loading, settings, toast } = useApp();
@@ -1034,6 +1096,7 @@ export function Creator() {
                           <Calendar size={13} /> Giao sản phẩm: {k.delivery_days} ngày
                         </span>
                       </div>
+                      <PackageFacts pkg={k} category={p.category} />
                       <div className="package-details-box">
                         <div className="detail-line">
                           <strong>Bao gồm:</strong>
@@ -1159,6 +1222,8 @@ export function Creator() {
                   <span>{money(remainingAmount)}</span>
                 </div>
               </div>
+
+              <PackageFacts pkg={pkg} category={p.category} compact />
 
               <Field label="1. Chọn ngày bạn muốn">
                 <input

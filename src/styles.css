@@ -3481,6 +3481,39 @@ td {
   gap: 6px;
   font-size: 12px;
 }
+.package-extra-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 12px;
+  color: var(--color-ink);
+  font-size: 12px;
+}
+.package-extra-details.compact {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--color-blush);
+}
+.package-extra-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.package-extra-counts span {
+  padding: 3px 8px;
+  border-radius: 99px;
+  background: var(--color-white);
+  color: var(--color-rose-gold-strong);
+  font-weight: 600;
+}
+.package-extra-details ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.package-extra-details li + li {
+  margin-top: 2px;
+}
 .detail-line {
   display: flex;
   gap: 8px;

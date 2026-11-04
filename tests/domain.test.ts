@@ -4,6 +4,7 @@ import {
   effectiveStatus,
   filterProviders,
   persistedReviews,
+  validatePackageDetails,
   type Booking,
   type Provider,
   type Review,
@@ -65,6 +66,44 @@ describe("customer journey", () => {
         review("22222222-2222-4222-8222-222222222222", true),
       ]).map((item) => item.id),
     ).toEqual(["11111111-1111-4111-8111-111111111111"]);
+  });
+  it("validates optional package details and bounded lists", () => {
+    expect(
+      validatePackageDetails({
+        original_photo_count: null,
+        edited_photo_count: 12,
+        revision_count: 2,
+        included_items: ["Tư vấn concept", "Trang phục"],
+        customer_benefits: null,
+      }),
+    ).toBeNull();
+    expect(
+      validatePackageDetails({
+        original_photo_count: -1,
+        edited_photo_count: null,
+        revision_count: null,
+        included_items: null,
+        customer_benefits: null,
+      }),
+    ).toContain("Số ảnh gốc");
+    expect(
+      validatePackageDetails({
+        original_photo_count: null,
+        edited_photo_count: null,
+        revision_count: null,
+        included_items: Array.from({ length: 21 }, (_, index) => `Mục ${index}`),
+        customer_benefits: null,
+      }),
+    ).toContain("tối đa 20 mục");
+    expect(
+      validatePackageDetails({
+        original_photo_count: null,
+        edited_photo_count: null,
+        revision_count: null,
+        included_items: ["x".repeat(201)],
+        customer_benefits: null,
+      }),
+    ).toContain("200 ký tự");
   });
   it("resolves bank names and builds standardized VietQR URL", () => {
     expect(resolveBankCode("Ngân hàng TMCP Quân Đội (MB)")).toBe("mbbank");

@@ -40,6 +40,12 @@ beforeAll(async () => {
   await db.exec(
     readFileSync("supabase/migrations/202610050002_operations.sql", "utf8"),
   );
+  await db.exec(
+    readFileSync(
+      "supabase/migrations/202611040001_package_details.sql",
+      "utf8",
+    ),
+  );
   await db.query("insert into auth.users(id) values ($1),($2),($3),($4)", [
     customer,
     other,
@@ -305,6 +311,71 @@ describe("PostgreSQL booking and authorization", () => {
     await expect(call("select public.admin_metrics()")).rejects.toThrow(
       /Không có quyền/,
     );
+  });
+  it("package details are bounded and only the owner can save them", async () => {
+    const save = `select public.save_package_details(
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15::jsonb
+    ) id`;
+    const values = [
+      pkg,
+      "Gói 2 giờ",
+      "Personal",
+      "Mô tả gói kiểm thử",
+      120,
+      1200000,
+      7,
+      "20 ảnh chỉnh",
+      "Studio trả riêng",
+      true,
+      50,
+      12,
+      2,
+      JSON.stringify(["Tư vấn concept", "Trang phục"]),
+      JSON.stringify(["Hướng dẫn tạo dáng"]),
+    ];
+
+    await as(owner);
+    await call(save, values);
+    const [saved] = await call(
+      "select original_photo_count,edited_photo_count,revision_count,included_items,customer_benefits from public.packages where id=$1",
+      [pkg],
+    );
+    expect(saved).toMatchObject({
+      original_photo_count: 50,
+      edited_photo_count: 12,
+      revision_count: 2,
+      included_items: ["Tư vấn concept", "Trang phục"],
+      customer_benefits: ["Hướng dẫn tạo dáng"],
+    });
+    await expect(
+      call(save, [...values.slice(0, 10), -1, ...values.slice(11)]),
+    ).rejects.toThrow(/Số ảnh gốc/);
+    await expect(
+      call(save, [
+        ...values.slice(0, 13),
+        JSON.stringify(["x".repeat(201)]),
+        values[14],
+      ]),
+    ).rejects.toThrow(/200 ký tự/);
+
+    await as(other);
+    await call(
+      "select public.save_provider('other-studio','Other Studio','Photographer','Hồ sơ kiểm thử creator khác',array['Quận 1'],array['Natural','Korean'])",
+    );
+    await expect(call(save, values)).rejects.toThrow(/Không có quyền sửa gói này/);
+
+    await db.exec("reset role");
+    await expect(
+      call("update public.packages set original_photo_count=-1 where id=$1", [
+        pkg,
+      ]),
+    ).rejects.toThrow(/packages_original_photo_count_check/);
+    await expect(
+      call(
+        "update public.packages set included_items=$1::jsonb where id=$2",
+        [JSON.stringify(Array.from({ length: 21 }, (_, index) => `Mục ${index}`)), pkg],
+      ),
+    ).rejects.toThrow(/packages_included_items_check/);
   });
   it("private portfolio originals are invisible before approval and cannot be uploaded as another creator", async () => {
     const path = owner + "/test.webp";

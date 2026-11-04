@@ -23,6 +23,7 @@ import {
   money,
   SERVICES,
   STYLES,
+  validatePackageDetails,
   type Booking,
   type Package,
 } from "./domain";
@@ -541,8 +542,36 @@ export function Studio() {
               onSubmit={async (e) => {
                 e.preventDefault();
                 const f = new FormData(e.currentTarget);
+                const list = (name: string) => {
+                  const items = String(f.get(name) || "")
+                    .split(/\r?\n/)
+                    .map((item) => item.trim())
+                    .filter(Boolean);
+                  return items.length ? items : null;
+                };
+                const details = {
+                  original_photo_count:
+                    f.get("original_photo_count") === ""
+                      ? null
+                      : Number(f.get("original_photo_count")),
+                  edited_photo_count:
+                    f.get("edited_photo_count") === ""
+                      ? null
+                      : Number(f.get("edited_photo_count")),
+                  revision_count:
+                    f.get("revision_count") === ""
+                      ? null
+                      : Number(f.get("revision_count")),
+                  included_items: list("included_items"),
+                  customer_benefits: list("customer_benefits"),
+                };
+                const detailsError = validatePackageDetails(details);
+                if (detailsError) {
+                  setError(detailsError);
+                  return;
+                }
                 const ok = await run(() =>
-                  rpc("save_package", {
+                  rpc("save_package_details", {
                     p_id: edit === "new" ? null : edit.id,
                     p_name: f.get("name"),
                     p_service: f.get("service"),
@@ -553,6 +582,11 @@ export function Studio() {
                     p_includes: f.get("includes"),
                     p_exclusions: f.get("exclusions"),
                     p_active: f.get("active") === "on",
+                    p_original_photo_count: details.original_photo_count,
+                    p_edited_photo_count: details.edited_photo_count,
+                    p_revision_count: details.revision_count,
+                    p_included_items: details.included_items,
+                    p_customer_benefits: details.customer_benefits,
                   }),
                 );
                 if (ok) setEdit(null);
@@ -620,6 +654,65 @@ export function Studio() {
                   />
                 </Field>
               </div>
+              <div className="form-grid three">
+                <Field label="Số ảnh gốc (để trống nếu không áp dụng)">
+                  <input
+                    type="number"
+                    name="original_photo_count"
+                    min={0}
+                    max={500}
+                    defaultValue={
+                      edit === "new" ? "" : (edit.original_photo_count ?? "")
+                    }
+                  />
+                </Field>
+                <Field label="Số ảnh chỉnh sửa (để trống nếu không áp dụng)">
+                  <input
+                    type="number"
+                    name="edited_photo_count"
+                    min={0}
+                    max={500}
+                    defaultValue={
+                      edit === "new" ? "" : (edit.edited_photo_count ?? "")
+                    }
+                  />
+                </Field>
+                <Field label="Số lần chỉnh sửa">
+                  <input
+                    type="number"
+                    name="revision_count"
+                    min={0}
+                    max={20}
+                    defaultValue={
+                      edit === "new" ? "" : (edit.revision_count ?? "")
+                    }
+                  />
+                </Field>
+              </div>
+              <Field label="Gói gồm gì (mỗi dòng một mục)">
+                <textarea
+                  name="included_items"
+                  maxLength={4000}
+                  placeholder="Trang phục, địa điểm, layout makeup, phụ kiện..."
+                  defaultValue={
+                    edit === "new"
+                      ? ""
+                      : (edit.included_items || []).join("\n")
+                  }
+                />
+              </Field>
+              <Field label="Quyền lợi của khách (mỗi dòng một mục)">
+                <textarea
+                  name="customer_benefits"
+                  maxLength={4000}
+                  placeholder="Tư vấn concept, hướng dẫn tạo dáng..."
+                  defaultValue={
+                    edit === "new"
+                      ? ""
+                      : (edit.customer_benefits || []).join("\n")
+                  }
+                />
+              </Field>
               <Field label="Bao gồm">
                 <textarea
                   name="includes"
