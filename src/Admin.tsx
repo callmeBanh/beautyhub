@@ -43,11 +43,21 @@ export function Admin() {
     [audit, setAudit] = useState<
       { id: string; action: string; detail: string; created_at: string }[]
     >([]),
+    [paymentEvents, setPaymentEvents] = useState<
+      {
+        id: string;
+        booking_id: string | null;
+        amount: number;
+        result: string;
+        duplicate_count: number;
+        created_at: string;
+      }[]
+    >([]),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [resolve, setResolve] = useState<Support | null>(null);
   async function load() {
-    const [b, t, u, a] = await Promise.all([
+    const [b, t, u, a, payment] = await Promise.all([
       client()
         .from("bookings")
         .select("*")
@@ -64,13 +74,19 @@ export function Admin() {
         .select("*")
         .order("created_at", { ascending: false })
         .limit(100),
+      client()
+        .from("payment_events")
+        .select("id,booking_id,amount,result,duplicate_count,created_at")
+        .order("created_at", { ascending: false })
+        .limit(100),
     ]);
-    const e = b.error || t.error || u.error || a.error;
+    const e = b.error || t.error || u.error || a.error || payment.error;
     if (e) throw e;
     setBookings(b.data || []);
     setTickets(t.data || []);
     setUsers(u.data || []);
     setAudit(a.data || []);
+    setPaymentEvents(payment.data || []);
     setMetrics(await rpc("admin_metrics"));
   }
   useEffect(() => {
@@ -107,6 +123,15 @@ export function Admin() {
       effectiveStatus(b) === "EXPIRED",
   );
   const refunds = bookings.filter((b) => b.payment_status === "REFUND_PENDING");
+  const unusualPayments = paymentEvents.filter(
+    (event) =>
+      [
+        "UNDERPAID_REVIEW",
+        "EXPIRED_REVIEW",
+        "BOOKING_NOT_AWAITING_DEPOSIT",
+        "UNKNOWN_ORDER",
+      ].includes(event.result) || event.duplicate_count > 0,
+  );
   return (
     <div className="workspace">
       <aside className="workspace-sidebar dark">
@@ -181,6 +206,34 @@ export function Admin() {
                 reviews.map((b) => <BookingCard b={b} key={b.id} />)
               ) : (
                 <p className="muted">Không có giao dịch chờ đối soát.</p>
+              )}
+            </section>
+            <section className="panel">
+              <h2>Sự kiện thanh toán payOS cần kiểm tra</h2>
+              {unusualPayments.length ? (
+                unusualPayments.map((event) => (
+                  <div className="list-row" key={event.id}>
+                    <div>
+                      <span className="eyebrow">
+                        {event.result}
+                        {event.duplicate_count > 0 &&
+                          ` · Trùng ${event.duplicate_count} lần`}
+                      </span>
+                      <p>
+                        {money(event.amount)} · {dateTime(event.created_at)}
+                      </p>
+                      {event.booking_id ? (
+                        <Link to={`/bookings/${event.booking_id}`}>
+                          Đối soát booking →
+                        </Link>
+                      ) : (
+                        <small>Không tìm thấy booking tương ứng.</small>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="muted">Không có sự kiện bất thường.</p>
               )}
             </section>
             <section className="panel">
