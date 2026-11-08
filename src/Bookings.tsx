@@ -737,29 +737,40 @@ export function BookingDetail() {
             )}
             {status === "CONFIRMED" && (
               <>
-                <p className="success">Đã nhận cọc.</p>
+                <p className="next-action-status">
+                  <CheckCircle2 size={14} />
+                  Đã nhận cọc.
+                </p>
                 <h2>Hẹn gặp lúc {dateTime(b.starts_at)}</h2>
-                <p>
+                <p className="next-action-address">
                   <MapPin size={15} />
                   {b.address}, {b.district}
                 </p>
-                {contact && (
-                  <a className="btn ghost" href={`tel:${contact}`}>
-                    <Phone size={16} />
-                    Gọi creator: {contact}
-                  </a>
-                )}
-                {owner && (
-                  <button
-                    className="btn"
-                    disabled={busy || Date.parse(b.ends_at) > now}
-                    onClick={() => setModal("COMPLETE")}
-                  >
-                    Xác nhận đã hoàn thành dịch vụ
-                  </button>
+                {(contact || owner) && (
+                  <div className="actions">
+                    {contact && (
+                      <a className="btn ghost" href={`tel:${contact}`}>
+                        <Phone size={16} />
+                        Gọi creator: {contact}
+                      </a>
+                    )}
+                    {owner && (
+                      <button
+                        className="btn"
+                        disabled={busy || Date.parse(b.ends_at) > now}
+                        aria-disabled={busy || Date.parse(b.ends_at) > now}
+                        onClick={() => setModal("COMPLETE")}
+                      >
+                        Xác nhận đã hoàn thành dịch vụ
+                      </button>
+                    )}
+                  </div>
                 )}
                 {owner && Date.parse(b.ends_at) > now && (
-                  <small>Có thể hoàn thành sau giờ kết thúc buổi hẹn.</small>
+                  <small className="next-action-hint">
+                    <Clock size={14} />
+                    Có thể hoàn thành sau giờ kết thúc buổi hẹn.
+                  </small>
                 )}
               </>
             )}
@@ -771,9 +782,11 @@ export function BookingDetail() {
                     : "Chia sẻ trải nghiệm của bạn"}
                 </h2>
                 {customer && !review && (
-                  <button className="btn" onClick={() => setModal("REVIEW")}>
-                    Viết đánh giá
-                  </button>
+                  <div className="actions">
+                    <button className="btn" onClick={() => setModal("REVIEW")}>
+                      Viết đánh giá
+                    </button>
+                  </div>
                 )}
                 {review && (
                   <p>
@@ -789,9 +802,11 @@ export function BookingDetail() {
                   Nếu bạn đã thanh toán cọc, hãy gửi yêu cầu hỗ trợ để được kiểm tra
                   soát. Không chuyển thêm tiền cho booking này.
                 </p>
-                <Link className="btn ghost" to="/explore">
-                  Tìm lịch khác <ArrowRight size={16} />
-                </Link>
+                <div className="actions">
+                  <Link className="btn ghost" to="/explore">
+                    Tìm lịch khác <ArrowRight size={16} />
+                  </Link>
+                </div>
               </>
             )}
             {b.payment_status === "REFUND_PENDING" && (
