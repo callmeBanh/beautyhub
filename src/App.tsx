@@ -526,6 +526,7 @@ function Account() {
             maxLength={100}
             autoComplete="name"
             defaultValue={profile?.display_name}
+            placeholder="VD: Nguyễn Minh Anh"
           />
         </Field>
         <Field label="Số điện thoại">
@@ -536,6 +537,7 @@ function Account() {
             autoComplete="tel"
             pattern="\+?[0-9]{9,15}"
             defaultValue={profile?.phone}
+            placeholder="VD: 0901234567"
           />
         </Field>
         <button className="btn" disabled={busy}>

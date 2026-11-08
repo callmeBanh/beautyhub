@@ -303,10 +303,12 @@ export function Modal({
   title,
   children,
   onClose,
+  className = "",
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
+  className?: string;
 }) {
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -350,7 +352,7 @@ export function Modal({
       }}
     >
       <section
-        className="modal"
+        className={`modal ${className}`.trim()}
         id="active-dialog"
         role="dialog"
         aria-modal="true"

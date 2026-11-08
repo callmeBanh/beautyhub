@@ -781,8 +781,8 @@ export function BookingDetail() {
               {b.snapshot.package.exclusions || "Không có phụ phí được công bố"}
             </p>
             <p>
-              <strong>Thời hạn giao:</strong>{" "}
-              {b.snapshot.package.delivery_days} ngày làm việc sau buổi hẹn.
+              <strong>Thời hạn giao:</strong> {b.snapshot.package.delivery_days}{" "}
+              ngày sau buổi hẹn.
             </p>
             {b.notes && (
               <p>
@@ -974,6 +974,11 @@ export function BookingDetail() {
                   minLength={10}
                   maxLength={2000}
                   rows={4}
+                  placeholder={
+                    modal === "SUPPORT"
+                      ? "VD: Tôi cần hỗ trợ xác nhận thời gian hẹn..."
+                      : undefined
+                  }
                 />
               </Field>
             )}
