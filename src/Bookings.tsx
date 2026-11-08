@@ -396,7 +396,12 @@ export function BookingDetail() {
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [modal, setModal] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [creatingPaymentLink, setCreatingPaymentLink] = useState(false),
+    [payosLink, setPayosLink] = useState<{
+      checkoutUrl: string;
+      expiresAt: string;
+    } | null>(null);
   const now = useClock();
   async function load() {
     try {
@@ -407,6 +412,7 @@ export function BookingDetail() {
         .single();
       if (result.error) throw result.error;
       setB(result.data);
+      if (result.data.status !== "AWAITING_DEPOSIT") setPayosLink(null);
       const [ev, ts, rv, ct] = await Promise.all([
         client()
           .from("booking_events")
@@ -453,6 +459,34 @@ export function BookingDetail() {
       setError(errorText(e));
     } finally {
       setBusy(false);
+    }
+  }
+  async function createPayOSLink() {
+    setCreatingPaymentLink(true);
+    setError("");
+    try {
+      const { data, error: invokeError } = await client().functions.invoke(
+        "create-payment-link",
+        { body: { bookingId: id } },
+      );
+      if (invokeError) throw invokeError;
+      if (
+        typeof data?.checkoutUrl !== "string" ||
+        !data.checkoutUrl.startsWith("https://") ||
+        typeof data?.expiresAt !== "string"
+      ) {
+        throw new Error("Không nhận được liên kết thanh toán hợp lệ.");
+      }
+      setPayosLink({
+        checkoutUrl: data.checkoutUrl,
+        expiresAt: data.expiresAt,
+      });
+    } catch (e) {
+      setError(
+        `${errorText(e)} Luồng chuyển khoản VietQR bên dưới vẫn khả dụng.`,
+      );
+    } finally {
+      setCreatingPaymentLink(false);
     }
   }
   if (loading) return <Loading />;
@@ -547,6 +581,35 @@ export function BookingDetail() {
                   <strong>{b.hold_until && dateTime(b.hold_until)}</strong>.
                   Không chuyển sau thời hạn này.
                 </p>
+                {customer && (
+                  <div className="payos-checkout">
+                    <button
+                      className="btn"
+                      disabled={creatingPaymentLink}
+                      onClick={() => void createPayOSLink()}
+                    >
+                      {creatingPaymentLink
+                        ? "Đang tạo liên kết thanh toán…"
+                        : "Thanh toán cọc qua payOS"}
+                    </button>
+                    {payosLink && (
+                      <div>
+                        <a
+                          href={payosLink.checkoutUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Mở trang thanh toán payOS
+                        </a>
+                        <p>
+                          {Date.parse(payosLink.expiresAt) > now
+                            ? `Liên kết hết hạn sau ${Math.floor((Date.parse(payosLink.expiresAt) - now) / 60000)} phút.`
+                            : "Liên kết đã hết hạn. Tạo liên kết mới hoặc dùng VietQR bên dưới."}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="vietqr-card">
                   <div className="vietqr-qr-wrap">
                     <img
