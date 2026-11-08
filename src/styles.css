@@ -1757,17 +1757,58 @@ footer > small {
 .next-action {
   border-left: 3px solid var(--brand);
 }
+.next-action > .eyebrow {
+  display: block;
+  margin-bottom: 10px;
+}
 .next-action h2 {
-  margin-top: 16px;
+  margin: 0 0 10px;
 }
 .next-action > p {
   color: var(--muted);
+  margin: 0 0 10px;
+}
+.next-action .next-action-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: var(--color-success);
+  background: var(--color-success-surface);
+  font-size: 13px;
+  font-weight: 600;
+}
+.next-action .next-action-address {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-bottom: 0;
+  overflow-wrap: anywhere;
 }
 .actions {
   display: flex;
+  align-items: stretch;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 20px;
+  gap: 12px;
+  margin-top: 22px;
+}
+.next-action .actions > .btn {
+  min-height: 48px;
+  border-radius: 9px;
+  padding-inline: 22px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.next-action .next-action-hint {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
 }
 .bank-info {
   display: grid;
@@ -3395,7 +3436,9 @@ button:disabled:not(.workspace-sidebar button) {
   color: var(--color-disabled-text);
   background: var(--color-disabled-bg);
   border: 1px solid var(--color-disabled-border);
+  border-style: dashed;
   opacity: 1;
+  cursor: not-allowed;
 }
 .workspace-sidebar button:disabled {
   color: var(--color-on-dark-muted);
@@ -5186,6 +5229,14 @@ a:not(.btn):active {
     gap: 3px;
   }
   .creator-package-actions .btn {
+    width: 100%;
+  }
+}
+@media (max-width: 639px) {
+  .next-action .actions {
+    flex-direction: column;
+  }
+  .next-action .actions > .btn {
     width: 100%;
   }
 }
