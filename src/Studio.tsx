@@ -25,6 +25,7 @@ import {
   localDate,
   money,
   SERVICES,
+  serviceLabel,
   STYLES,
   validatePackageDetails,
   type Booking,
@@ -328,7 +329,7 @@ export function Studio() {
               {own?.packages.map((p) => (
                 <article className="panel" key={p.id}>
                   <span className="eyebrow">
-                    {p.service} · {p.active ? "Đang mở" : "Tạm ẩn"}
+                    {serviceLabel(p.service)} · {p.active ? "Đang mở" : "Tạm ẩn"}
                   </span>
                   <h2>{p.name}</h2>
                   <p>{p.description}</p>
@@ -624,7 +625,9 @@ export function Studio() {
                   defaultValue={edit === "new" ? "Personal" : edit.service}
                 >
                   {SERVICES.map((s) => (
-                    <option key={s}>{s}</option>
+                    <option key={s} value={s}>
+                      {serviceLabel(s)}
+                    </option>
                   ))}
                 </select>
               </Field>

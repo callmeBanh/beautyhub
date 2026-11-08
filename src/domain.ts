@@ -28,9 +28,21 @@ export const SERVICES = [
   "Profile/CV",
   "Graduation",
   "Couple",
+  "anniversary",
   "Photoshoot makeup",
   "Party/Event",
 ];
+export const SERVICE_LABELS: Record<string, string> = {
+  Personal: "Cá nhân",
+  "Profile/CV": "Hồ sơ / CV",
+  Graduation: "Kỷ yếu",
+  Couple: "Cặp đôi",
+  anniversary: "Kỷ niệm",
+  "Photoshoot makeup": "Trang điểm chụp ảnh",
+  "Party/Event": "Tiệc / Sự kiện",
+};
+export const serviceLabel = (service: string) =>
+  SERVICE_LABELS[service] || service;
 export type Status =
   | "REQUESTED"
   | "AWAITING_DEPOSIT"

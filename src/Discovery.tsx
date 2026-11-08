@@ -35,6 +35,7 @@ import {
   DISTRICTS,
   FAQ_ITEMS,
   SERVICES,
+  serviceLabel,
   STYLES,
   TESTIMONIALS,
   TRENDING_CONCEPTS,
@@ -664,7 +665,7 @@ export function Explore() {
               <option value="">Tất cả nhu cầu</option>
               {SERVICES.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {serviceLabel(s)}
                 </option>
               ))}
             </select>
@@ -1082,7 +1083,9 @@ export function Creator() {
                       }}
                     >
                       <div className="package-top">
-                        <span className="eyebrow">{k.service}</span>
+                        <span className="eyebrow">
+                          {serviceLabel(k.service)}
+                        </span>
                         {pkg?.id === k.id && (
                           <span className="selected-badge">Đang chọn</span>
                         )}

@@ -46,6 +46,12 @@ beforeAll(async () => {
       "utf8",
     ),
   );
+  await db.exec(
+    readFileSync(
+      "supabase/migrations/202611080001_package_anniversary.sql",
+      "utf8",
+    ),
+  );
   await db.query("insert into auth.users(id) values ($1),($2),($3),($4)", [
     customer,
     other,
@@ -376,6 +382,21 @@ describe("PostgreSQL booking and authorization", () => {
         [JSON.stringify(Array.from({ length: 21 }, (_, index) => `Mục ${index}`)), pkg],
       ),
     ).rejects.toThrow(/packages_included_items_check/);
+  });
+  it("accepts anniversary packages and rejects unknown package needs", async () => {
+    await as(owner);
+    await call(
+      "select public.save_package(null,'Gói kỷ niệm','anniversary','Gói dành cho ngày kỷ niệm',60,1200000,7,'Tư vấn concept','',true)",
+    );
+    const [saved] = await call<{ service: string }>(
+      "select service from public.packages where name='Gói kỷ niệm'",
+    );
+    expect(saved.service).toBe("anniversary");
+    await expect(
+      call(
+        "select public.save_package(null,'Gói không hợp lệ','unknown','Mô tả gói không hợp lệ',60,1200000,7,'','',true)",
+      ),
+    ).rejects.toThrow(/packages_service_check/);
   });
   it("private portfolio originals are invisible before approval and cannot be uploaded as another creator", async () => {
     const path = owner + "/test.webp";

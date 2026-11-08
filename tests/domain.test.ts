@@ -6,6 +6,8 @@ import {
   formatDuration,
   durationHoursToMinutes,
   durationMinutesToHours,
+  SERVICES,
+  serviceLabel,
   persistedReviews,
   validatePackageDetails,
   errorText,
@@ -15,6 +17,13 @@ import {
 } from "../src/domain";
 import { resolveBankCode, buildVietQrUrl } from "../src/vietqr";
 describe("customer journey", () => {
+  it("labels package needs in Vietnamese without changing stored values", () => {
+    expect(SERVICES).toContain("anniversary");
+    expect(serviceLabel("Personal")).toBe("Cá nhân");
+    expect(serviceLabel("Couple")).toBe("Cặp đôi");
+    expect(serviceLabel("anniversary")).toBe("Kỷ niệm");
+    expect(serviceLabel("legacy-service")).toBe("legacy-service");
+  });
   it("converts package duration between entered hours and stored minutes", () => {
     expect(durationHoursToMinutes("0,5")).toBe(30);
     expect(durationHoursToMinutes("1.5")).toBe(90);
