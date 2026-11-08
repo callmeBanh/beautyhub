@@ -243,6 +243,29 @@ export const money = (n: number) =>
     currency: "VND",
     maximumFractionDigits: 0,
   }).format(n);
+export function durationHoursToMinutes(value: string): number | null {
+  const normalized = value.trim().replace(",", ".");
+  if (!/^\d+(?:\.\d+)?$/.test(normalized)) return null;
+  const hours = Number(normalized);
+  if (
+    !Number.isFinite(hours) ||
+    hours < 0.5 ||
+    hours > 8 ||
+    Math.abs(hours * 2 - Math.round(hours * 2)) > 1e-8
+  ) {
+    return null;
+  }
+  return Math.round(hours * 60);
+}
+export function durationMinutesToHours(minutes: number): string {
+  return new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 }).format(
+    minutes / 60,
+  );
+}
+export function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} phút`;
+  return `${durationMinutesToHours(minutes)} giờ`;
+}
 export const dateTime = (v: string) =>
   new Date(v).toLocaleString("vi-VN", {
     timeZone: "Asia/Ho_Chi_Minh",
@@ -574,7 +597,7 @@ export function enrichProviders(providers: Provider[]): Provider[] {
           provider_id: "b0000000-0000-0000-0000-000000000003",
           name: "Gói Street Muse / Sài Gòn Chiều",
           service: "Personal",
-          description: "Chụp 90 phút dạo phố hoặc quán cà phê vintage tại Quận 1, Quận 3. Màu film hạt cổ điển ấm áp.",
+          description: "Chụp 1,5 giờ dạo phố hoặc quán cà phê vintage tại Quận 1, Quận 3. Màu film hạt cổ điển ấm áp.",
           duration: 90,
           price: 1200000,
           delivery_days: 4,
@@ -592,7 +615,7 @@ export function enrichProviders(providers: Provider[]): Provider[] {
           provider_id: "b0000000-0000-0000-0000-000000000003",
           name: "Gói Cinematic Couple / Tình Ca",
           service: "Couple",
-          description: "Buổi chụp 120 phút ghi lại câu chuyện tình yêu mộc mạc và chân thành của hai bạn.",
+          description: "Buổi chụp 2 giờ ghi lại câu chuyện tình yêu mộc mạc và chân thành của hai bạn.",
           duration: 120,
           price: 1800000,
           delivery_days: 5,

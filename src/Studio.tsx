@@ -17,8 +17,11 @@ import { useApp } from "./context";
 import {
   dateTime,
   DISTRICTS,
+  durationHoursToMinutes,
+  durationMinutesToHours,
   effectiveStatus,
   errorText,
+  formatDuration,
   localDate,
   money,
   SERVICES,
@@ -331,7 +334,7 @@ export function Studio() {
                   <p>{p.description}</p>
                   <div className="inline-meta">
                     <strong>{money(p.price)}</strong>
-                    <span>{p.duration} phút</span>
+                    <span>{formatDuration(p.duration)}</span>
                     <span>Giao trong {p.delivery_days} ngày</span>
                   </div>
                   <button className="btn ghost" onClick={() => setEdit(p)}>
@@ -574,13 +577,22 @@ export function Studio() {
                   setError(detailsError);
                   return;
                 }
+                const duration = durationHoursToMinutes(
+                  String(f.get("duration") || ""),
+                );
+                if (duration === null) {
+                  setError(
+                    "Thời gian thực hiện phải từ 0,5 đến 8 giờ, theo bước 0,5.",
+                  );
+                  return;
+                }
                 const ok = await run(() =>
                   rpc("save_package_details", {
                     p_id: edit === "new" ? null : edit.id,
                     p_name: f.get("name"),
                     p_service: f.get("service"),
                     p_description: f.get("description"),
-                    p_duration: Number(f.get("duration")),
+                    p_duration: duration,
                     p_price: Number(f.get("price")),
                     p_days: Number(f.get("days")),
                     p_includes: f.get("includes"),
@@ -637,14 +649,22 @@ export function Studio() {
                     defaultValue={edit === "new" ? 900000 : edit.price}
                   />
                 </Field>
-                <Field label="Phút thực hiện">
+                <Field
+                  label="Thời gian thực hiện (giờ)"
+                  hint="Từ 0,5 đến 8 giờ, bước 0,5."
+                >
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     name="duration"
-                    min={30}
-                    max={480}
+                    pattern="[0-9]+([.,][0-9]+)?"
+                    placeholder="VD: 2"
                     required
-                    defaultValue={edit === "new" ? 60 : edit.duration}
+                    defaultValue={
+                      edit === "new"
+                        ? ""
+                        : durationMinutesToHours(edit.duration)
+                    }
                   />
                 </Field>
                 <Field label="Ngày giao sản phẩm">

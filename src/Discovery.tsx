@@ -39,6 +39,7 @@ import {
   TESTIMONIALS,
   TRENDING_CONCEPTS,
   filterProviders,
+  formatDuration,
   localDate,
   minPrice,
   money,
@@ -1093,7 +1094,7 @@ export function Creator() {
                       <p className="package-desc">{k.description}</p>
                       <div className="package-meta-chips">
                         <span>
-                          <Clock size={13} /> {k.duration} phút
+                          <Clock size={13} /> {formatDuration(k.duration)}
                         </span>
                         <span>
                           <Calendar size={13} /> Giao sản phẩm: {k.delivery_days} ngày

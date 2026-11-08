@@ -16,6 +16,7 @@ import {
   dateTime,
   effectiveStatus,
   errorText,
+  formatDuration,
   money,
   type Booking,
   type Profile,
@@ -295,7 +296,7 @@ export function Admin() {
                       {p.packages.map((k) => (
                         <tr key={k.id}>
                           <td>{k.name}</td>
-                          <td>{k.duration} phút</td>
+                          <td>{formatDuration(k.duration)}</td>
                           <td>{money(k.price)}</td>
                           <td>{k.includes}</td>
                         </tr>
