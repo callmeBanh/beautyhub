@@ -14,7 +14,7 @@ export class ErrorBoundary extends Component<
         <main className="page narrow">
           <h1>Trang chưa tải được.</h1>
           <p>
-            Vui lòng tải lại. Nếu bạn vừa gửi booking hoặc báo chuyển tiền, hãy
+            Vui lòng tải lại. Nếu bạn vừa gửi booking hoặc thanh toán cọc, hãy
             kiểm tra Lịch hẹn của tôi trước khi thao tác lại; không chuyển thêm
             tiền.
           </p>

@@ -129,7 +129,7 @@ function Footer() {
             nghiệp tại TP.HCM.
           </p>
           <p className="footer-features">
-            ✓ 100% Tác phẩm xác minh · ✓ Cọc 30% VietQR an toàn · ✓ Hoàn cọc minh bạch.
+            ✓ 100% Tác phẩm xác minh · ✓ Cọc 30% payOS an toàn · ✓ Hoàn cọc minh bạch.
           </p>
           <div className="footer-socials">
             <a href="https://instagram.com" target="_blank" rel="noreferrer" aria-label="Instagram">
@@ -649,14 +649,12 @@ function Policies() {
       <h2>Đặt lịch và tiền cọc</h2>
       <p>
         Yêu cầu đặt lịch được giữ tối đa 12 giờ để creator phản hồi. Sau khi
-        creator chấp nhận, bạn có tối đa 6 giờ để chuyển cọc 30%. Hạn chính xác
+        creator chấp nhận, bạn có tối đa 6 giờ để thanh toán cọc 30% qua payOS. Hạn chính xác
         được hiển thị trong booking. Lịch chỉ được xác nhận sau khi BeautyHub
         đối soát tiền thực nhận.
       </p>
       <p>
-        Không chuyển tiền sau thời hạn. Nếu đã chuyển muộn hoặc nhập sai nội
-        dung, gửi yêu cầu hỗ trợ ngay trong trang booking. Tiền báo chuyển chưa
-        đồng nghĩa đã nhận tiền.
+        Không thanh toán sau thời hạn. Giao dịch cọc muộn hoặc bất thường cần được kiểm tra qua ticket.
       </p>
       <h2>Hủy, đổi lịch và hoàn tiền</h2>
       {settings?.cancellation_policy ? (
@@ -733,8 +731,8 @@ function How() {
         ],
         [
           "4",
-          "Chuyển cọc và được xác nhận",
-          "Khi creator chấp nhận, chuyển cọc theo đúng tài khoản và nội dung hiển thị. Báo đã chuyển tiền để BeautyHub đối soát.",
+          "Thanh toán cọc và được xác nhận",
+          "Khi creator chấp nhận, thanh toán cọc qua payOS để xác nhận lịch.",
         ],
         [
           "5",

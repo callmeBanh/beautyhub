@@ -199,7 +199,7 @@ export function Admin() {
             <section className="panel">
               <h2>Tiền cọc cần đối soát</h2>
               <p>
-                Kiểm tra tiền thực nhận tại ngân hàng trước khi xác nhận. Mở
+                Kiểm tra trạng thái giao dịch trước khi xử lý. Mở
                 booking để ghi mã giao dịch.
               </p>
               {reviews.length ? (
@@ -550,9 +550,9 @@ export function Admin() {
               const f = new FormData(e.currentTarget);
               await run(() =>
                 rpc("save_settings", {
-                  p_bank: f.get("bank"),
-                  p_account: f.get("account"),
-                  p_holder: f.get("holder"),
+                  p_bank: settings?.bank_name || "",
+                  p_account: settings?.bank_account || "",
+                  p_holder: settings?.bank_holder || "",
                   p_support: f.get("support"),
                   p_policy: f.get("policy"),
                   p_ready: f.get("ready") === "on",
@@ -565,41 +565,6 @@ export function Admin() {
               Nhập thông tin do đơn vị vận hành kiểm tra. Chính sách được lưu
               vào từng booking; thay đổi sau không ghi đè thỏa thuận cũ.
             </p>
-            <div className="form-grid two">
-              <Field label="Tên ngân hàng">
-                <input
-                  name="bank"
-                  required
-                  defaultValue={settings?.bank_name}
-                />
-              </Field>
-              <Field label="Số tài khoản nhận cọc">
-                <input
-                  name="account"
-                  required
-                  defaultValue={settings?.bank_account}
-                />
-              </Field>
-              <Field label="Tên chủ tài khoản">
-                <input
-                  name="holder"
-                  required
-                  defaultValue={settings?.bank_holder}
-                />
-              </Field>
-              <Field
-                label="Link hỗ trợ (HTTPS)"
-                hint="Zalo hoặc trang liên hệ có người trực trong beta."
-              >
-                <input
-                  type="url"
-                  name="support"
-                  required
-                  pattern="https://.*"
-                  defaultValue={settings?.support_url}
-                />
-              </Field>
-            </div>
             <Field
               label="Chính sách hủy / đổi lịch / hoàn tiền"
               hint="Nêu rõ các mốc thời gian, tỷ lệ hoàn, thời hạn xử lý, trường hợp creator hủy, cách liên hệ và bên nhận tiền."
@@ -673,7 +638,7 @@ export function Admin() {
               </Field>
               <p>
                 Khoản hoàn sẽ vào hàng chờ; chỉ xác nhận đã hoàn sau khi thực
-                hiện chuyển tiền. Đổi lịch cần thống nhất hai bên qua hỗ trợ,
+                hệ thống xác nhận thanh toán cọc. Đổi lịch cần thống nhất hai bên qua hỗ trợ,
                 hủy booking cũ và đặt lịch mới sau khi xử lý tiền.
               </p>
               <button className="btn" disabled={busy}>
