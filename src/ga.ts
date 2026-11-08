@@ -3,7 +3,11 @@ const consentStorageKey = "beautyhub.analytics-consent";
 export const consentSettingsEvent = "beautyhub:open-consent-settings";
 
 type ConsentChoice = "granted" | "denied";
-export type AnalyticsParameters = { service_type?: string };
+export type AnalyticsParameters = {
+  service_type?: string;
+  search_term?: string;
+  package_id?: string;
+};
 type Gtag = (...args: unknown[]) => void;
 
 declare global {
@@ -16,6 +20,7 @@ declare global {
 let consentModeInitialized = false;
 let configuredForSession = false;
 let memoryConsent: boolean | null | undefined;
+let lastPageViewPath: string | null = null;
 
 const isConfigured = () => /^G-[A-Z0-9]+$/i.test(measurementId);
 
@@ -87,6 +92,7 @@ export function initializeAnalytics() {
 
 export function setAnalyticsConsent(granted: boolean) {
   memoryConsent = granted;
+  if (!granted) lastPageViewPath = null;
   let persisted = true;
   try {
     localStorage.setItem(consentStorageKey, granted ? "accepted" : "rejected");
@@ -103,11 +109,13 @@ export function trackPageView(pathname: string) {
     .replace(/^\/creators\/[^/]+$/, "/creators/:creator")
     .replace(/^\/checkout\/[^/]+$/, "/checkout/:package")
     .replace(/^\/bookings\/[^/]+$/, "/bookings/:booking");
+  if (pathname === lastPageViewPath) return;
   window.gtag("event", "page_view", {
     page_path: pagePath,
     page_location: `${window.location.origin}${pagePath}`,
     page_title: document.title,
   });
+  lastPageViewPath = pathname;
 }
 
 export function trackAnalyticsEvent(
@@ -116,6 +124,8 @@ export function trackAnalyticsEvent(
 ) {
   if (!isConfigured() || getAnalyticsConsent() !== true || !window.gtag) return;
   const gaEvents: Record<string, string> = {
+    search: "search",
+    booking_started: "booking_started",
     provider_view: "view_creator",
     package_view: "select_package",
     view_slots: "view_slots",
@@ -125,8 +135,16 @@ export function trackAnalyticsEvent(
   };
   const gaEvent = gaEvents[event];
   if (!gaEvent) return;
-  const safeParameters = parameters.service_type
-    ? { service_type: parameters.service_type }
-    : {};
+  const safeParameters: AnalyticsParameters = {};
+  if (parameters.service_type) safeParameters.service_type = parameters.service_type;
+  if (parameters.package_id) safeParameters.package_id = parameters.package_id;
+  const searchTerm = parameters.search_term?.trim();
+  if (
+    searchTerm &&
+    searchTerm.length <= 100 &&
+    !/@|(?:\+?\d[\d\s().-]{7,}\d)/.test(searchTerm)
+  ) {
+    safeParameters.search_term = searchTerm;
+  }
   window.gtag("event", gaEvent, safeParameters);
 }
