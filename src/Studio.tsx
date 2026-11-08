@@ -1,14 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import {
+  Check,
   CalendarDays,
   Camera,
   Clock,
+  DollarSign,
+  FileText,
+  Gift,
   ImagePlus,
   LayoutDashboard,
   Package as PackageIcon,
   Plus,
   Settings,
+  Sparkles,
   Star,
   Upload,
 } from "lucide-react";
@@ -17,18 +22,560 @@ import { useApp } from "./context";
 import {
   dateTime,
   DISTRICTS,
+  durationHoursToMinutes,
+  durationMinutesToHours,
   effectiveStatus,
   errorText,
+  formatDuration,
   localDate,
   money,
   SERVICES,
+  serviceLabel,
   STYLES,
   validatePackageDetails,
   type Booking,
   type Package,
+  type PackageDetailsInput,
 } from "./domain";
 import { Alert, Badge, Empty, Field, Loading, Modal } from "./ui";
 import { BookingCard } from "./Bookings";
+
+type PackageDraft = {
+  name: string;
+  service: string;
+  description: string;
+  price: string;
+  duration: string;
+  days: string;
+  original_photo_count: string;
+  edited_photo_count: string;
+  revision_count: string;
+  included_items: string;
+  customer_benefits: string;
+  includes: string;
+  exclusions: string;
+  active: boolean;
+};
+type PackageSavePayload = {
+  id: string | null;
+  name: string;
+  service: string;
+  description: string;
+  duration: number;
+  price: number;
+  days: number;
+  includes: string;
+  exclusions: string;
+  active: boolean;
+  details: PackageDetailsInput;
+};
+function packageDraft(item: Package | "new"): PackageDraft {
+  if (item === "new") {
+    return {
+      name: "",
+      service: "Personal",
+      description: "",
+      price: "",
+      duration: "",
+      days: "",
+      original_photo_count: "",
+      edited_photo_count: "",
+      revision_count: "",
+      included_items: "",
+      customer_benefits: "",
+      includes: "",
+      exclusions: "",
+      active: true,
+    };
+  }
+  return {
+    name: item.name,
+    service: item.service,
+    description: item.description,
+    price: String(item.price),
+    duration: durationMinutesToHours(item.duration),
+    days: String(item.delivery_days),
+    original_photo_count: String(item.original_photo_count ?? ""),
+    edited_photo_count: String(item.edited_photo_count ?? ""),
+    revision_count: String(item.revision_count ?? ""),
+    included_items: (item.included_items || []).join("\n"),
+    customer_benefits: (item.customer_benefits || []).join("\n"),
+    includes: item.includes,
+    exclusions: item.exclusions,
+    active: item.active,
+  };
+}
+function packageLines(value: string) {
+  const items = value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return items.length ? items : null;
+}
+function parsePackagePrice(value: string) {
+  const trimmed = value.trim();
+  if (!/^(?:\d+|\d{1,3}(?:[.,]\d{3})+)$/.test(trimmed)) return null;
+  return Number(trimmed.replace(/[.,]/g, ""));
+}
+function packageDraftErrors(draft: PackageDraft) {
+  const errors: Record<string, string> = {};
+  const price = parsePackagePrice(draft.price);
+  const duration = durationHoursToMinutes(draft.duration);
+  const days = Number(draft.days);
+  if (draft.name.trim().length < 2 || draft.name.trim().length > 100)
+    errors.name = "Nhập tên gói từ 2 đến 100 ký tự.";
+  if (draft.description.trim().length < 10 || draft.description.length > 2000)
+    errors.description = "Mô tả cần từ 10 đến 2.000 ký tự.";
+  if (price === null || price < 100000 || price > 100000000)
+    errors.price = "Giá phải từ 100.000 đến 100.000.000đ.";
+  if (duration === null)
+    errors.duration = "Nhập từ 0,5 đến 8 giờ theo bước 0,5.";
+  if (!/^\d+$/.test(draft.days) || days < 0 || days > 60)
+    errors.days = "Nhập số ngày làm việc từ 0 đến 60.";
+  for (const [key, label, max] of [
+    ["original_photo_count", "Số ảnh gốc", 500],
+    ["edited_photo_count", "Số ảnh chỉnh sửa", 500],
+    ["revision_count", "Số lần chỉnh sửa", 20],
+  ] as const) {
+    const value = draft[key];
+    if (value && (!/^\d+$/.test(value) || Number(value) > max))
+      errors[key] = `${label} phải là số nguyên từ 0 đến ${max}.`;
+  }
+  if (!draft.includes.trim()) errors.includes = "Nhập thông tin đã tính trong giá.";
+  const detailsError = validatePackageDetails({
+    original_photo_count: draft.original_photo_count
+      ? Number(draft.original_photo_count)
+      : null,
+    edited_photo_count: draft.edited_photo_count
+      ? Number(draft.edited_photo_count)
+      : null,
+    revision_count: draft.revision_count ? Number(draft.revision_count) : null,
+    included_items: packageLines(draft.included_items),
+    customer_benefits: packageLines(draft.customer_benefits),
+  });
+  if (detailsError) {
+    if (detailsError.startsWith("Số ảnh gốc")) errors.original_photo_count = detailsError;
+    else if (detailsError.startsWith("Số ảnh chỉnh sửa"))
+      errors.edited_photo_count = detailsError;
+    else if (detailsError.startsWith("Số lần chỉnh sửa"))
+      errors.revision_count = detailsError;
+    else if (detailsError.startsWith("Quyền lợi"))
+      errors.customer_benefits = detailsError;
+    else if (detailsError.includes("danh sách"))
+      errors.included_items = detailsError;
+    else if (detailsError.includes("quyền lợi"))
+      errors.customer_benefits = detailsError;
+    else errors.included_items = detailsError;
+  }
+  return errors;
+}
+
+function PackageEditor({
+  item,
+  category,
+  error,
+  busy,
+  onClose,
+  onSave,
+}: {
+  item: Package | "new";
+  category: string;
+  error: string;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (payload: PackageSavePayload) => Promise<boolean>;
+}) {
+  const [draft, setDraft] = useState(() => packageDraft(item));
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const photoService = category === "Photographer";
+  const includedPlaceholder = photoService
+    ? "Trang phục hỗ trợ\nĐịa điểm chụp\n2 concept ngoại cảnh"
+    : "Trang điểm dự tiệc\nPhụ kiện tóc\nTạo kiểu tóc";
+  const previewDuration =
+    durationHoursToMinutes(draft.duration) || (item === "new" ? 0 : item.duration);
+  const previewPrice = parsePackagePrice(draft.price);
+  function update<K extends keyof PackageDraft>(key: K, value: PackageDraft[K]) {
+    setDraft((current) => ({ ...current, [key]: value }));
+    setFieldErrors((current) => ({ ...current, [key]: "" }));
+  }
+  const fieldErrorProps = (key: keyof PackageDraft) => ({
+    "aria-invalid": Boolean(fieldErrors[key]),
+    "aria-describedby": fieldErrors[key] ? `package-${key}-error` : undefined,
+  });
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const errors = packageDraftErrors(draft);
+    setFieldErrors(errors);
+    if (Object.values(errors).some(Boolean)) return;
+    const details: PackageDetailsInput = {
+      original_photo_count: draft.original_photo_count
+        ? Number(draft.original_photo_count)
+        : null,
+      edited_photo_count: draft.edited_photo_count
+        ? Number(draft.edited_photo_count)
+        : null,
+      revision_count: draft.revision_count ? Number(draft.revision_count) : null,
+      included_items: packageLines(draft.included_items),
+      customer_benefits: packageLines(draft.customer_benefits),
+    };
+    const saved = await onSave({
+      id: item === "new" ? null : item.id,
+      name: draft.name.trim(),
+      service: draft.service,
+      description: draft.description.trim(),
+      duration: durationHoursToMinutes(draft.duration)!,
+      price: parsePackagePrice(draft.price)!,
+      days: Number(draft.days),
+      includes: draft.includes.trim(),
+      exclusions: draft.exclusions.trim(),
+      active: draft.active,
+      details,
+    });
+    if (saved) onClose();
+  }
+  const errorFor = (key: keyof PackageDraft, id = `package-${key}-error`) =>
+    fieldErrors[key] ? (
+      <small className="field-error" id={id} role="alert">
+        {fieldErrors[key]}
+      </small>
+    ) : null;
+  return (
+    <Modal
+      title={item === "new" ? "Tạo gói dịch vụ" : "Chỉnh sửa gói"}
+      onClose={onClose}
+      className="package-editor-modal"
+    >
+      <div className="package-editor-layout">
+        <form className="form-grid package-editor-form" noValidate onSubmit={submit}>
+          {error && <Alert>{error}</Alert>}
+          <section className="package-form-section">
+            <h3>
+              <FileText size={18} /> Thông tin cơ bản
+            </h3>
+            <Field label="Tên gói">
+              <input
+                name="name"
+                required
+                minLength={2}
+                maxLength={100}
+                value={draft.name}
+                placeholder={
+                  photoService
+                    ? "VD: Chụp kỷ yếu nhóm 5 người"
+                    : "VD: Trang điểm dự tiệc"
+                }
+                {...fieldErrorProps("name")}
+                onChange={(event) => update("name", event.target.value)}
+              />
+              {errorFor("name", "package-name-error")}
+            </Field>
+            <div className="field">
+              <span>Dịch vụ</span>
+              <div className="package-service-summary">
+                {photoService ? <Camera size={19} /> : <Sparkles size={19} />}
+                <strong>
+                  {photoService ? "Nhiếp ảnh" : "Trang điểm"}
+                </strong>
+                <small>Theo dịch vụ chính trong hồ sơ creator.</small>
+              </div>
+            </div>
+            <fieldset className="package-need-group">
+              <legend>Nhu cầu</legend>
+              <div className="package-need-options" role="group" aria-label="Chọn nhu cầu của gói">
+                {SERVICES.map((service) => (
+                  <button
+                    key={service}
+                    type="button"
+                    className={
+                      draft.service === service
+                        ? "package-need-option selected"
+                        : "package-need-option"
+                    }
+                    aria-pressed={draft.service === service}
+                    onClick={() => update("service", service)}
+                  >
+                    {service === "anniversary" ? (
+                      <Gift size={16} aria-hidden="true" />
+                    ) : service === "Couple" ? (
+                      <Sparkles size={16} aria-hidden="true" />
+                    ) : (
+                      <Camera size={16} aria-hidden="true" />
+                    )}
+                    {serviceLabel(service)}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <Field label="Mô tả">
+              <textarea
+                name="description"
+                required
+                minLength={10}
+                maxLength={2000}
+                rows={3}
+                value={draft.description}
+                placeholder="VD: Combo chụp ngoại cảnh 2 concept, có chỉnh sửa màu và tư vấn dáng"
+                {...fieldErrorProps("description")}
+                onChange={(event) => update("description", event.target.value)}
+              />
+              {errorFor("description")}
+            </Field>
+          </section>
+
+          <section className="package-form-section">
+            <h3>
+              <DollarSign size={18} /> Giá và thời gian
+            </h3>
+            <div className="form-grid two">
+              <Field label="Giá (VND)" hint="Nhập số tiền; dấu chấm hoặc phẩy phân cách hàng nghìn đều được.">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  name="price"
+                  required
+                  value={draft.price}
+                  placeholder="VD: 900.000"
+                  {...fieldErrorProps("price")}
+                  onChange={(event) => update("price", event.target.value)}
+                />
+                {errorFor("price")}
+              </Field>
+              <Field
+                label="Thời gian thực hiện (giờ)"
+                hint="Tối thiểu 0,5 giờ; nhập theo bước 0,5."
+              >
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  name="duration"
+                  required
+                  value={draft.duration}
+                  placeholder="VD: 2"
+                  {...fieldErrorProps("duration")}
+                  onChange={(event) => update("duration", event.target.value)}
+                />
+                {errorFor("duration")}
+              </Field>
+              <Field label="Thời gian giao sản phẩm (tính theo ngày làm việc)">
+                <input
+                  type="number"
+                  name="days"
+                  min={0}
+                  max={60}
+                  required
+                  value={draft.days}
+                  placeholder="VD: 7"
+                  {...fieldErrorProps("days")}
+                  onChange={(event) => update("days", event.target.value)}
+                />
+                {errorFor("days")}
+              </Field>
+            </div>
+          </section>
+
+          <section className="package-form-section">
+            <h3>
+              <ImagePlus size={18} /> Sản phẩm bàn giao
+            </h3>
+            {photoService && (
+              <div className="form-grid three">
+                <Field label="Số ảnh gốc" hint="Để trống nếu không áp dụng.">
+                  <input
+                    type="number"
+                    name="original_photo_count"
+                    min={0}
+                    max={500}
+                    value={draft.original_photo_count}
+                    placeholder="VD: 100"
+                    {...fieldErrorProps("original_photo_count")}
+                    onChange={(event) =>
+                      update("original_photo_count", event.target.value)
+                    }
+                  />
+                  {errorFor("original_photo_count")}
+                </Field>
+                <Field label="Số ảnh chỉnh sửa" hint="Để trống nếu không áp dụng.">
+                  <input
+                    type="number"
+                    name="edited_photo_count"
+                    min={0}
+                    max={500}
+                    value={draft.edited_photo_count}
+                    placeholder="VD: 20"
+                    {...fieldErrorProps("edited_photo_count")}
+                    onChange={(event) =>
+                      update("edited_photo_count", event.target.value)
+                    }
+                  />
+                  {errorFor("edited_photo_count")}
+                </Field>
+                <Field label="Số lần chỉnh sửa" hint="Để trống nếu không áp dụng.">
+                  <input
+                    type="number"
+                    name="revision_count"
+                    min={0}
+                    max={20}
+                    value={draft.revision_count}
+                    placeholder="VD: 2"
+                    {...fieldErrorProps("revision_count")}
+                    onChange={(event) =>
+                      update("revision_count", event.target.value)
+                    }
+                  />
+                  {errorFor("revision_count")}
+                </Field>
+              </div>
+            )}
+            <Field
+              label="Gói gồm gì (mỗi dòng một hạng mục)"
+              hint="Liệt kê cụ thể các phần khách nhận; trường này khác với phần mô tả ngắn về những gì đã tính trong giá bên dưới."
+            >
+              <textarea
+                name="included_items"
+                maxLength={4000}
+                rows={4}
+                value={draft.included_items}
+                placeholder={includedPlaceholder}
+                {...fieldErrorProps("included_items")}
+                onChange={(event) => update("included_items", event.target.value)}
+              />
+              {errorFor("included_items")}
+            </Field>
+          </section>
+
+          <section className="package-form-section">
+            <h3>
+              <Gift size={18} /> Quyền lợi và phụ phí
+            </h3>
+            <Field
+              label="Quyền lợi của khách (mỗi dòng một mục)"
+              hint="Nêu trải nghiệm hoặc hỗ trợ đi kèm, không lặp lại hạng mục bàn giao."
+            >
+              <textarea
+                name="customer_benefits"
+                maxLength={4000}
+                rows={3}
+                value={draft.customer_benefits}
+                placeholder={"Tư vấn concept trước buổi chụp\nHướng dẫn tạo dáng"}
+                {...fieldErrorProps("customer_benefits")}
+                onChange={(event) =>
+                  update("customer_benefits", event.target.value)
+                }
+              />
+              {errorFor("customer_benefits")}
+            </Field>
+            <Field
+              label="Thông tin đã tính trong giá"
+              hint="Mô tả ngắn phần dịch vụ đã bao gồm trong giá; không lặp danh sách hạng mục bàn giao ở trên."
+            >
+              <textarea
+                name="includes"
+                required
+                maxLength={1000}
+                rows={2}
+                value={draft.includes}
+                placeholder="VD: Bao gồm chụp tại studio và chỉnh màu 20 ảnh"
+                {...fieldErrorProps("includes")}
+                onChange={(event) => update("includes", event.target.value)}
+              />
+              {errorFor("includes")}
+            </Field>
+            <Field
+              label="Không bao gồm / phụ phí công bố"
+              hint="Nêu rõ chi phí phát sinh đã biết; để trống nếu không có."
+            >
+              <textarea
+                name="exclusions"
+                maxLength={1000}
+                rows={2}
+                value={draft.exclusions}
+                placeholder="VD: Phụ phí di chuyển ngoài nội thành: 100.000đ"
+                onChange={(event) => update("exclusions", event.target.value)}
+              />
+            </Field>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                name="active"
+                checked={draft.active}
+                onChange={(event) => update("active", event.target.checked)}
+              />
+              Mở nhận booking cho gói này
+            </label>
+          </section>
+          <div className="package-form-actions">
+            <button type="button" className="btn ghost" onClick={onClose}>
+              Hủy
+            </button>
+            <button className="btn" disabled={busy}>
+              {busy ? "Đang lưu…" : "Lưu gói"}
+            </button>
+          </div>
+        </form>
+
+        <aside className="package-preview" aria-live="polite">
+          <div className="package-preview-heading">
+            <Sparkles size={17} />
+            <div>
+              <strong>Xem trước</strong>
+              <small>Khách sẽ thấy thông tin gói như sau</small>
+            </div>
+          </div>
+          <article className="package-card">
+            <div className="package-top">
+              <span className="eyebrow">{serviceLabel(draft.service)}</span>
+            </div>
+            <div className="package-title-row">
+              <h3>{draft.name || "Tên gói dịch vụ"}</h3>
+              <div className="package-price">
+                {draft.price && previewPrice !== null
+                  ? money(previewPrice)
+                  : "Giá dịch vụ"}
+              </div>
+            </div>
+            <p className="package-desc">
+              {draft.description || "Mô tả dịch vụ sẽ hiển thị tại đây."}
+            </p>
+            <div className="package-meta-chips">
+              {previewDuration > 0 && (
+                <span>
+                  <Clock size={13} /> {formatDuration(previewDuration)}
+                </span>
+              )}
+              {draft.days && (
+                <span>
+                  <Check size={13} /> Giao trong {draft.days} ngày làm việc
+                </span>
+              )}
+              {draft.original_photo_count && (
+                <span>{draft.original_photo_count} ảnh gốc</span>
+              )}
+              {draft.edited_photo_count && (
+                <span>{draft.edited_photo_count} ảnh chỉnh sửa</span>
+              )}
+              {draft.revision_count && (
+                <span>{draft.revision_count} lần chỉnh sửa</span>
+              )}
+            </div>
+            {packageLines(draft.included_items)?.length ? (
+              <div className="package-preview-includes">
+                <strong>Gói gồm gì</strong>
+                <ul>
+                  {packageLines(draft.included_items)!.map((line, index) => (
+                    <li key={`${index}-${line}`}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="muted">Các hạng mục gói gồm sẽ hiển thị tại đây.</p>
+            )}
+          </article>
+        </aside>
+      </div>
+    </Modal>
+  );
+}
+
 export function Studio() {
   const { user, profile, providers, refresh, toast } = useApp();
   const own = providers.find((p) => p.owner_id === user!.id);
@@ -80,6 +627,10 @@ export function Studio() {
       setBusy(false);
     }
   }
+  function openPackageEditor(item: Package | "new") {
+    setError("");
+    setEdit(item);
+  }
   const sections = [
     ["overview", "Tổng quan", LayoutDashboard],
     ["profile", "Hồ sơ creator", Settings],
@@ -97,6 +648,10 @@ export function Studio() {
   return (
     <div className="workspace">
       <aside className="workspace-sidebar">
+        <Link className="workspace-brand" to="/" aria-label="BeautyHub trang chủ">
+          <img src="/assets/brand-mark.png" alt="" width="44" height="44" />
+          <span>beautyhub</span>
+        </Link>
         <span className="eyebrow">CREATOR SPACE</span>
         <h2>{own?.name || "Góc sáng tạo của bạn"}</h2>
         {own && <Badge status={own.status} />}
@@ -232,6 +787,7 @@ export function Studio() {
                   minLength={2}
                   maxLength={100}
                   defaultValue={own?.name}
+                  placeholder="VD: Lan Anh Studio"
                 />
               </Field>
               <Field
@@ -243,17 +799,36 @@ export function Studio() {
                   required
                   pattern="[a-z0-9][a-z0-9-]{2,60}"
                   defaultValue={own?.slug}
+                  placeholder="VD: lan-anh-studio"
                 />
               </Field>
-              <Field label="Dịch vụ chính">
-                <select
-                  name="category"
-                  defaultValue={own?.category || "Photographer"}
-                >
-                  <option>Photographer</option>
-                  <option>Makeup Artist</option>
-                </select>
-              </Field>
+              <fieldset className="service-category-choices">
+                <legend>Dịch vụ chính</legend>
+                <div>
+                  <label className="service-choice">
+                    <input
+                      type="radio"
+                      name="category"
+                      value="Photographer"
+                      defaultChecked={
+                        (own?.category || "Photographer") === "Photographer"
+                      }
+                    />
+                    <Camera size={18} />
+                    <span>Nhiếp ảnh</span>
+                  </label>
+                  <label className="service-choice">
+                    <input
+                      type="radio"
+                      name="category"
+                      value="Makeup Artist"
+                      defaultChecked={own?.category === "Makeup Artist"}
+                    />
+                    <Sparkles size={18} />
+                    <span>Trang điểm</span>
+                  </label>
+                </div>
+              </fieldset>
             </div>
             <Field label="Giới thiệu">
               <textarea
@@ -263,7 +838,7 @@ export function Studio() {
                 maxLength={2000}
                 rows={5}
                 defaultValue={own?.bio}
-                placeholder="Cách bạn làm việc, phong cách và điều khách hàng có thể mong đợi…"
+                placeholder="VD: Mình chuyên chụp chân dung tự nhiên, tư vấn concept và hướng dẫn tạo dáng..."
               />
             </Field>
             <fieldset>
@@ -309,33 +884,61 @@ export function Studio() {
         )}
         {tab === "packages" && (
           <>
-            <button
-              className="btn"
-              disabled={!own}
-              onClick={() => setEdit("new")}
-            >
-              <Plus size={16} />
-              Thêm gói dịch vụ
-            </button>
+            {own?.packages.length ? (
+              <button className="btn" onClick={() => openPackageEditor("new")}>
+                <Plus size={16} />
+                Thêm gói dịch vụ
+              </button>
+            ) : null}
             <div className="studio-packages">
               {own?.packages.map((p) => (
                 <article className="panel" key={p.id}>
-                  <span className="eyebrow">
-                    {p.service} · {p.active ? "Đang mở" : "Tạm ẩn"}
-                  </span>
+                  <div className="studio-package-top">
+                    <span className="eyebrow">{serviceLabel(p.service)}</span>
+                    <span
+                      className={
+                        p.active
+                          ? "package-status active"
+                          : "package-status hidden"
+                      }
+                    >
+                      {p.active ? "Đang mở" : "Đang ẩn"}
+                    </span>
+                  </div>
                   <h2>{p.name}</h2>
                   <p>{p.description}</p>
-                  <div className="inline-meta">
+                  <div className="package-meta-chips">
                     <strong>{money(p.price)}</strong>
-                    <span>{p.duration} phút</span>
-                    <span>Giao trong {p.delivery_days} ngày</span>
+                    <span>
+                      <Clock size={13} /> {formatDuration(p.duration)}
+                    </span>
+                    <span>
+                      <Check size={13} /> Giao trong {p.delivery_days} ngày làm việc
+                    </span>
+                    {p.edited_photo_count != null && (
+                      <span>{p.edited_photo_count} ảnh chỉnh sửa</span>
+                    )}
                   </div>
-                  <button className="btn ghost" onClick={() => setEdit(p)}>
+                  <button className="btn ghost" onClick={() => openPackageEditor(p)}>
                     Chỉnh sửa
                   </button>
                 </article>
               ))}
             </div>
+            {own && own.packages.length === 0 && (
+              <div className="package-empty panel">
+                <PackageIcon size={34} aria-hidden="true" />
+                <h2>Hãy tạo gói dịch vụ đầu tiên</h2>
+                <p>
+                  Thêm giá, thời lượng và quyền lợi để khách hiểu rõ dịch vụ
+                  trước khi gửi yêu cầu.
+                </p>
+                <button className="btn" onClick={() => openPackageEditor("new")}>
+                  <Plus size={16} />
+                  Tạo gói đầu tiên
+                </button>
+              </div>
+            )}
             {!own && (
               <Empty title="Tạo hồ sơ trước khi thêm gói">
                 <button
@@ -379,7 +982,10 @@ export function Studio() {
                 Tối đa 12 ảnh, tự động nén về WebP dưới 512 KB. Chỉ tải ảnh bạn
                 có quyền sử dụng và được người trong ảnh cho phép công bố.
               </p>
-              <Field label="Chọn ảnh">
+              <Field
+                label="Chọn ảnh"
+                hint="Ví dụ: chọn ảnh JPG, PNG hoặc WebP dưới 12 MB."
+              >
                 <input
                   type="file"
                   name="image"
@@ -393,7 +999,7 @@ export function Studio() {
                   name="caption"
                   maxLength={200}
                   required
-                  placeholder="Concept, loại dịch vụ, phong cách…"
+                  placeholder="VD: Concept nàng thơ, chân dung ngoài trời..."
                 />
               </Field>
               <label className="checkbox">
@@ -449,7 +1055,7 @@ export function Studio() {
                 và không trùng booking.
               </p>
               <div className="form-grid three">
-                <Field label="Ngày">
+                <Field label="Ngày" hint="Chọn một ngày trong 90 ngày tới.">
                   <input
                     type="date"
                     name="date"
@@ -458,7 +1064,7 @@ export function Studio() {
                     required
                   />
                 </Field>
-                <Field label="Từ giờ">
+                <Field label="Từ giờ" hint="VD: 09:00">
                   <input
                     type="time"
                     name="start"
@@ -467,7 +1073,7 @@ export function Studio() {
                     step="1800"
                   />
                 </Field>
-                <Field label="Đến giờ">
+                <Field label="Đến giờ" hint="VD: 17:00">
                   <input
                     type="time"
                     name="end"
@@ -533,214 +1139,42 @@ export function Studio() {
           </section>
         )}
         {edit && (
-          <Modal
-            title={edit === "new" ? "Tạo gói dịch vụ" : "Chỉnh sửa gói"}
-            onClose={() => setEdit(null)}
-          >
-            <form
-              className="form-grid"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const f = new FormData(e.currentTarget);
-                const list = (name: string) => {
-                  const items = String(f.get(name) || "")
-                    .split(/\r?\n/)
-                    .map((item) => item.trim())
-                    .filter(Boolean);
-                  return items.length ? items : null;
-                };
-                const details = {
-                  original_photo_count:
-                    f.get("original_photo_count") === ""
-                      ? null
-                      : Number(f.get("original_photo_count")),
-                  edited_photo_count:
-                    f.get("edited_photo_count") === ""
-                      ? null
-                      : Number(f.get("edited_photo_count")),
-                  revision_count:
-                    f.get("revision_count") === ""
-                      ? null
-                      : Number(f.get("revision_count")),
-                  included_items: list("included_items"),
-                  customer_benefits: list("customer_benefits"),
-                };
-                const detailsError = validatePackageDetails(details);
-                if (detailsError) {
-                  setError(detailsError);
-                  return;
-                }
-                const ok = await run(() =>
+          <PackageEditor
+            key={edit === "new" ? "new-package" : edit.id}
+            item={edit}
+            category={own?.category || "Photographer"}
+            error={error}
+            busy={busy}
+            onClose={() => {
+              setEdit(null);
+              setError("");
+            }}
+            onSave={(payload) =>
+              run(
+                () =>
                   rpc("save_package_details", {
-                    p_id: edit === "new" ? null : edit.id,
-                    p_name: f.get("name"),
-                    p_service: f.get("service"),
-                    p_description: f.get("description"),
-                    p_duration: Number(f.get("duration")),
-                    p_price: Number(f.get("price")),
-                    p_days: Number(f.get("days")),
-                    p_includes: f.get("includes"),
-                    p_exclusions: f.get("exclusions"),
-                    p_active: f.get("active") === "on",
-                    p_original_photo_count: details.original_photo_count,
-                    p_edited_photo_count: details.edited_photo_count,
-                    p_revision_count: details.revision_count,
-                    p_included_items: details.included_items,
-                    p_customer_benefits: details.customer_benefits,
+                    p_id: payload.id,
+                    p_name: payload.name,
+                    p_service: payload.service,
+                    p_description: payload.description,
+                    p_duration: payload.duration,
+                    p_price: payload.price,
+                    p_days: payload.days,
+                    p_includes: payload.includes,
+                    p_exclusions: payload.exclusions,
+                    p_active: payload.active,
+                    p_original_photo_count:
+                      payload.details.original_photo_count,
+                    p_edited_photo_count:
+                      payload.details.edited_photo_count,
+                    p_revision_count: payload.details.revision_count,
+                    p_included_items: payload.details.included_items,
+                    p_customer_benefits: payload.details.customer_benefits,
                   }),
-                );
-                if (ok) setEdit(null);
-              }}
-            >
-              {error && <Alert>{error}</Alert>}
-              <Field label="Tên gói">
-                <input
-                  name="name"
-                  required
-                  minLength={2}
-                  maxLength={100}
-                  defaultValue={edit === "new" ? "" : edit.name}
-                />
-              </Field>
-              <Field label="Nhu cầu">
-                <select
-                  name="service"
-                  defaultValue={edit === "new" ? "Personal" : edit.service}
-                >
-                  {SERVICES.map((s) => (
-                    <option key={s}>{s}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Mô tả">
-                <textarea
-                  name="description"
-                  required
-                  minLength={10}
-                  maxLength={2000}
-                  defaultValue={edit === "new" ? "" : edit.description}
-                />
-              </Field>
-              <div className="form-grid three">
-                <Field label="Giá (VND)">
-                  <input
-                    type="number"
-                    name="price"
-                    min={100000}
-                    max={100000000}
-                    step={1000}
-                    required
-                    defaultValue={edit === "new" ? 900000 : edit.price}
-                  />
-                </Field>
-                <Field label="Phút thực hiện">
-                  <input
-                    type="number"
-                    name="duration"
-                    min={30}
-                    max={480}
-                    required
-                    defaultValue={edit === "new" ? 60 : edit.duration}
-                  />
-                </Field>
-                <Field label="Ngày giao sản phẩm">
-                  <input
-                    type="number"
-                    name="days"
-                    min={0}
-                    max={60}
-                    required
-                    defaultValue={edit === "new" ? 7 : edit.delivery_days}
-                  />
-                </Field>
-              </div>
-              <div className="form-grid three">
-                <Field label="Số ảnh gốc (để trống nếu không áp dụng)">
-                  <input
-                    type="number"
-                    name="original_photo_count"
-                    min={0}
-                    max={500}
-                    defaultValue={
-                      edit === "new" ? "" : (edit.original_photo_count ?? "")
-                    }
-                  />
-                </Field>
-                <Field label="Số ảnh chỉnh sửa (để trống nếu không áp dụng)">
-                  <input
-                    type="number"
-                    name="edited_photo_count"
-                    min={0}
-                    max={500}
-                    defaultValue={
-                      edit === "new" ? "" : (edit.edited_photo_count ?? "")
-                    }
-                  />
-                </Field>
-                <Field label="Số lần chỉnh sửa">
-                  <input
-                    type="number"
-                    name="revision_count"
-                    min={0}
-                    max={20}
-                    defaultValue={
-                      edit === "new" ? "" : (edit.revision_count ?? "")
-                    }
-                  />
-                </Field>
-              </div>
-              <Field label="Gói gồm gì (mỗi dòng một mục)">
-                <textarea
-                  name="included_items"
-                  maxLength={4000}
-                  placeholder="Trang phục, địa điểm, layout makeup, phụ kiện..."
-                  defaultValue={
-                    edit === "new"
-                      ? ""
-                      : (edit.included_items || []).join("\n")
-                  }
-                />
-              </Field>
-              <Field label="Quyền lợi của khách (mỗi dòng một mục)">
-                <textarea
-                  name="customer_benefits"
-                  maxLength={4000}
-                  placeholder="Tư vấn concept, hướng dẫn tạo dáng..."
-                  defaultValue={
-                    edit === "new"
-                      ? ""
-                      : (edit.customer_benefits || []).join("\n")
-                  }
-                />
-              </Field>
-              <Field label="Bao gồm">
-                <textarea
-                  name="includes"
-                  required
-                  maxLength={1000}
-                  defaultValue={edit === "new" ? "" : edit.includes}
-                />
-              </Field>
-              <Field label="Không bao gồm / phụ phí công bố">
-                <textarea
-                  name="exclusions"
-                  maxLength={1000}
-                  defaultValue={edit === "new" ? "" : edit.exclusions}
-                />
-              </Field>
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  name="active"
-                  defaultChecked={edit === "new" || edit.active}
-                />
-                Mở nhận booking cho gói này
-              </label>
-              <button className="btn" disabled={busy}>
-                Lưu gói
-              </button>
-            </form>
-          </Modal>
+                "Đã lưu gói dịch vụ.",
+              )
+            }
+          />
         )}
       </div>
     </div>

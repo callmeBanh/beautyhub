@@ -23,6 +23,7 @@ import {
   dateTime,
   effectiveStatus,
   errorText,
+  formatDuration,
   labels,
   money,
   paymentReference,
@@ -236,7 +237,7 @@ export function Checkout() {
             </span>
             <span>
               <Clock size={16} />
-              {pkg.duration} phút
+              {formatDuration(pkg.duration)}
             </span>
             <span>
               <MapPin size={16} />
@@ -760,7 +761,8 @@ export function BookingDetail() {
               <div>
                 <small>Ngày giờ</small>
                 <strong>
-                  {dateTime(b.starts_at)} · {b.snapshot.package.duration} phút
+                  {dateTime(b.starts_at)} ·{" "}
+                  {formatDuration(b.snapshot.package.duration)}
                 </strong>
               </div>
               <div>
@@ -972,6 +974,11 @@ export function BookingDetail() {
                   minLength={10}
                   maxLength={2000}
                   rows={4}
+                  placeholder={
+                    modal === "SUPPORT"
+                      ? "VD: Tôi cần hỗ trợ xác nhận thời gian hẹn..."
+                      : undefined
+                  }
                 />
               </Field>
             )}

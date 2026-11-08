@@ -3,6 +3,11 @@ import {
   safeNext,
   effectiveStatus,
   filterProviders,
+  formatDuration,
+  durationHoursToMinutes,
+  durationMinutesToHours,
+  SERVICES,
+  serviceLabel,
   persistedReviews,
   validatePackageDetails,
   errorText,
@@ -12,6 +17,28 @@ import {
 } from "../src/domain";
 import { resolveBankCode, buildVietQrUrl } from "../src/vietqr";
 describe("customer journey", () => {
+  it("labels package needs in Vietnamese without changing stored values", () => {
+    expect(SERVICES).toContain("anniversary");
+    expect(serviceLabel("Personal")).toBe("Cá nhân");
+    expect(serviceLabel("Couple")).toBe("Cặp đôi");
+    expect(serviceLabel("anniversary")).toBe("Kỷ niệm");
+    expect(serviceLabel("legacy-service")).toBe("legacy-service");
+  });
+  it("converts package duration between entered hours and stored minutes", () => {
+    expect(durationHoursToMinutes("0,5")).toBe(30);
+    expect(durationHoursToMinutes("1.5")).toBe(90);
+    expect(durationHoursToMinutes("8")).toBe(480);
+    expect(durationHoursToMinutes("1,25")).toBeNull();
+    expect(durationHoursToMinutes("0")).toBeNull();
+    expect(durationHoursToMinutes("8.5")).toBeNull();
+    expect(durationHoursToMinutes("abc")).toBeNull();
+    expect(durationMinutesToHours(90)).toBe("1,5");
+  });
+  it("formats package duration in hours, except under one hour", () => {
+    expect(formatDuration(480)).toBe("8 giờ");
+    expect(formatDuration(90)).toBe("1,5 giờ");
+    expect(formatDuration(30)).toBe("30 phút");
+  });
   it("rejects external OAuth return paths", () => {
     expect(safeNext("//evil.example")).toBe("/bookings");
     expect(safeNext("/\\evil.example")).toBe("/bookings");

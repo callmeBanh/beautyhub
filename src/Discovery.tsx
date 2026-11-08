@@ -35,10 +35,12 @@ import {
   DISTRICTS,
   FAQ_ITEMS,
   SERVICES,
+  serviceLabel,
   STYLES,
   TESTIMONIALS,
   TRENDING_CONCEPTS,
   filterProviders,
+  formatDuration,
   localDate,
   minPrice,
   money,
@@ -552,7 +554,7 @@ export function Explore() {
       <div className="page-heading">
         <div>
           <span className="eyebrow">TÌM NGƯỜI ĐỒNG HÀNH HOÀN HẢO</span>
-          <h1>Hợp gu. Hợp lịch. Đúng ngân sách.</h1>
+          <h1>Hợp gu. Hợp lịch. Hợp ngân sách.</h1>
           <p className="muted">
             Lọc theo dịch vụ, khu vực và phong cách nghệ thuật yêu thích của bạn.
           </p>
@@ -663,7 +665,7 @@ export function Explore() {
               <option value="">Tất cả nhu cầu</option>
               {SERVICES.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {serviceLabel(s)}
                 </option>
               ))}
             </select>
@@ -1081,7 +1083,9 @@ export function Creator() {
                       }}
                     >
                       <div className="package-top">
-                        <span className="eyebrow">{k.service}</span>
+                        <span className="eyebrow">
+                          {serviceLabel(k.service)}
+                        </span>
                         {pkg?.id === k.id && (
                           <span className="selected-badge">Đang chọn</span>
                         )}
@@ -1093,10 +1097,10 @@ export function Creator() {
                       <p className="package-desc">{k.description}</p>
                       <div className="package-meta-chips">
                         <span>
-                          <Clock size={13} /> {k.duration} phút
+                          <Clock size={13} /> {formatDuration(k.duration)}
                         </span>
                         <span>
-                          <Calendar size={13} /> Giao sản phẩm: {k.delivery_days} ngày
+                          <Calendar size={13} /> Giao trong {k.delivery_days} ngày làm việc
                         </span>
                       </div>
                       <PackageFacts pkg={k} category={p.category} />

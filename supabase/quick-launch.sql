@@ -78,7 +78,7 @@ VALUES
 (
   'c0000000-0000-0000-0000-000000000001'::uuid, 'b0000000-0000-0000-0000-000000000001'::uuid,
   'Gói Chân dung / Lookbook Ngoại cảnh', 'Personal',
-  'Buổi chụp 90 phút tại các địa điểm ngoại cảnh đẹp ở Quận 1, Quận 3 hoặc quán cà phê theo concept yêu thích của bạn.',
+  'Buổi chụp 1,5 giờ tại các địa điểm ngoại cảnh đẹp ở Quận 1, Quận 3 hoặc quán cà phê theo concept yêu thích của bạn.',
   90, 850000, 5, '15 ảnh chỉnh sửa màu & da chuyên nghiệp, trả toàn bộ file gốc độ phân giải cao.',
   'Chi phí vé vào cổng / nước uống tại địa điểm chụp (nếu có).', true
 ),
