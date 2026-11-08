@@ -1,7 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   createPayOSWebhookSignature,
-  isPayOSWebhookProbe,
   timingSafeHexEqual,
 } from "../_shared/payos.ts";
 
@@ -102,10 +101,6 @@ Deno.serve(async (request) => {
   if (!checksumKey || !supabaseUrl || !serviceKey) {
     logRejection("missing_secret", bodyLength, body);
     return reply(503, { error: "Webhook is not configured." });
-  }
-
-  if (isPayOSWebhookProbe(body)) {
-    return reply(200, { code: "00", desc: "success" });
   }
 
   if (
