@@ -20,7 +20,7 @@ Mở http://127.0.0.1:4173. Tạo `.env` từ `.env.example`, điền URL Supaba
 ## Thiết lập Supabase và Google
 
 1. Chủ dự án tạo Supabase Free project, chọn region phù hợp (ví dụ Singapore), bật bảo vệ tài khoản quản trị. Không cần nhập thông tin thẻ cho mã nguồn này.
-2. Trong SQL Editor của project **mới**, chạy lần lượt `supabase/migrations/202610050001_beta.sql`, `202610050002_operations.sql`, rồi `202611040001_package_details.sql`. Migration cuối tạo các trường chi tiết gói và RPC `save_package_details` mà form creator sử dụng. Không chạy migration khởi tạo lên database đang có dữ liệu cùng tên. Schema `private` không được thêm vào exposed API schemas.
+2. Trong SQL Editor của project **mới**, chạy lần lượt `supabase/migrations/202610050001_beta.sql`, `202610050002_operations.sql`, `202611040001_package_details.sql`, rồi `202611080001_package_anniversary.sql`. Migration chi tiết gói tạo các trường bổ sung và RPC `save_package_details`; migration mới nhất cho phép nhu cầu Kỷ niệm và giới hạn các giá trị nhu cầu được ghi mới. Ràng buộc được thêm `NOT VALID` để không quét/từ chối dữ liệu cũ khi áp dụng. Không chạy migration khởi tạo lên database đang có dữ liệu cùng tên. Schema `private` không được thêm vào exposed API schemas.
 3. Với Supabase project đã chạy trước đó, chỉ chạy migration mới chưa áp dụng; không chạy lại hai migration khởi tạo. Để xác định migration gói đã được áp dụng, chạy:
 
 ```sql
@@ -35,7 +35,7 @@ Nếu kết quả là `NULL`, chạy nội dung `supabase/migrations/20261104000
 notify pgrst, 'reload schema';
 ```
 
-Không chạy lại migration nếu hàm đã tồn tại; chỉ gửi lệnh reload cache nếu cần.
+Không chạy lại migration nếu hàm đã tồn tại; chỉ gửi lệnh reload cache nếu cần. Với database đã áp dụng migration gói, chạy riêng `supabase/migrations/202611080001_package_anniversary.sql` một lần nếu chưa áp dụng.
 4. Chạy `supabase/enable-cron.sql` bằng SQL Editor để hết hạn giữ lịch và nhắc hẹn mỗi phút; kiểm tra trạng thái trong Integrations → Cron. Tác vụ cũng giữ lịch sử cron tối đa 7 ngày. Hàm nghiệp vụ đã được thử bằng PostgreSQL nhúng; scheduler Supabase cần kiểm tra trên project thật.
 5. Bật Google provider trong Supabase Auth. Chủ tài khoản cấu hình Google OAuth client, consent screen và callback `https://<project-ref>.supabase.co/auth/v1/callback`. Client secret chỉ nhập trong dashboard Supabase.
 6. Supabase Auth → URL Configuration: Site URL là URL production. Redirect allowlist gồm URL callback web thực tế (có query `next`): `http://127.0.0.1:4173/auth/callback**` cho local và `https://<site>.pages.dev/auth/callback**` cho production. Không allowlist wildcard mọi domain. Khi mở khách thật, Google consent screen phải cho phép khách ngoài danh sách test.
