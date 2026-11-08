@@ -28,11 +28,31 @@ async function create(at = start, requestKey = crypto.randomUUID()) {
     [pkg, at, requestKey],
   );
 }
+async function createAwaiting(at: string, customerId = customer) {
+  await as(customerId);
+  const [{ id }] = await create(at);
+  await as(owner);
+  await call("select public.booking_action($1,'ACCEPT','')", [id]);
+  return id;
+}
+async function addPayOSAvailability(offsetDays: number) {
+  const payosDay = new Date(
+    Date.now() + (7 + offsetDays) * 86400000,
+  )
+    .toISOString()
+    .slice(0, 10);
+  await as(owner);
+  await call("select public.add_availability($1,$2)", [
+    `${payosDay}T09:00:00+07:00`,
+    `${payosDay}T18:00:00+07:00`,
+  ]);
+  return payosDay;
+}
 beforeAll(async () => {
   db = new PGlite({ extensions: { btree_gist } });
   await db.waitReady;
   await db.exec(
-    `create schema auth;create schema storage;create schema extensions;create role anon;create role authenticated;create table auth.users(id uuid primary key,raw_user_meta_data jsonb default '{}');create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;grant usage on schema auth,public,storage to anon,authenticated;grant execute on function auth.uid() to anon,authenticated;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text);alter table storage.objects enable row level security;grant select,insert on storage.objects to anon,authenticated;create function storage.foldername(text) returns text[] language sql as $$select string_to_array($1,'/')$$;`,
+    `create schema auth;create schema storage;create schema extensions;create role anon;create role authenticated;create role service_role bypassrls;create table auth.users(id uuid primary key,raw_user_meta_data jsonb default '{}');create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;grant usage on schema auth,public,storage to anon,authenticated,service_role;grant execute on function auth.uid() to anon,authenticated,service_role;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid default gen_random_uuid(),bucket_id text,name text);alter table storage.objects enable row level security;grant select,insert on storage.objects to anon,authenticated;create function storage.foldername(text) returns text[] language sql as $$select string_to_array($1,'/')$$;`,
   );
   await db.exec(
     readFileSync("supabase/migrations/202610050001_beta.sql", "utf8"),
@@ -51,6 +71,9 @@ beforeAll(async () => {
       "supabase/migrations/202611080001_package_anniversary.sql",
       "utf8",
     ),
+  );
+  await db.exec(
+    readFileSync("supabase/migrations/202611080002_payos_deposits.sql", "utf8"),
   );
   await db.query("insert into auth.users(id) values ($1),($2),($3),($4)", [
     customer,
@@ -397,6 +420,191 @@ describe("PostgreSQL booking and authorization", () => {
         "select public.save_package(null,'Gói không hợp lệ','unknown','Mô tả gói không hợp lệ',60,1200000,7,'','',true)",
       ),
     ).rejects.toThrow(/packages_service_check/);
+  });
+  it("reserves a payOS link only for service role and exposes it only to its customer", async () => {
+    const payosDay = await addPayOSAvailability(1);
+    const id = await createAwaiting(`${payosDay}T09:00:00+07:00`);
+    const expires = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    await as(null, "authenticated");
+    await expect(
+      call("select * from public.reserve_payos_payment_link($1,$2)", [
+        id,
+        expires,
+      ]),
+    ).rejects.toThrow(/permission denied/);
+
+    await as(null, "service_role");
+    const [link] = await call<{
+      id: string;
+      payos_order_code: number;
+      amount: number;
+    }>("select * from public.reserve_payos_payment_link($1,$2)", [id, expires]);
+    expect(link.amount).toBe(360000);
+    await call(
+      "update public.payment_links set payment_link_id='pl-test',checkout_url='https://payos.example/checkout',qr_code='qr' where id=$1",
+      [link.id],
+    );
+    const [retry] = await call(
+      "select * from public.reserve_payos_payment_link($1,$2)",
+      [id, expires],
+    );
+    expect(retry.id).toBe(link.id);
+
+    await as(customer);
+    expect(
+      await call("select * from public.payment_links where booking_id=$1", [
+        id,
+      ]),
+    ).toHaveLength(1);
+    await expect(
+      call("insert into public.payment_links(booking_id,payos_order_code,amount,expires_at) values($1,999999999,1,$2)", [id, expires]),
+    ).rejects.toThrow(/permission denied/);
+    expect(await call("select * from public.payment_events")).toHaveLength(0);
+    await as(other);
+    expect(await call("select * from public.payment_links")).toHaveLength(0);
+  });
+  it("confirms a sufficient payOS deposit once and ignores a duplicate event", async () => {
+    const payosDay = await addPayOSAvailability(2);
+    const id = await createAwaiting(`${payosDay}T09:00:00+07:00`);
+    const expires = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    await as(null, "service_role");
+    const [link] = await call<{ payos_order_code: number }>(
+      "select * from public.reserve_payos_payment_link($1,$2)",
+      [id, expires],
+    );
+    const process = `select public.process_payos_payment(
+      $1,$2,360000,'{"code":"00"}'::jsonb,true
+    ) result`;
+    expect(
+      (await call<{ result: { result: string } }>(process, [
+        "tx-confirm",
+        link.payos_order_code,
+      ]))[0].result.result,
+    ).toBe("CONFIRMED");
+    expect(
+      (await call<{ result: { result: string } }>(process, [
+        "tx-confirm",
+        link.payos_order_code,
+      ]))[0].result.result,
+    ).toBe("DUPLICATE");
+    await as(admin);
+    const [bookingRow] = await call(
+      "select status,payment_status from public.bookings where id=$1",
+      [id],
+    );
+    expect(bookingRow).toMatchObject({
+      status: "CONFIRMED",
+      payment_status: "PAID",
+    });
+    expect(
+      await call("select * from public.payment_events where id='tx-confirm'"),
+    ).toHaveLength(1);
+    expect(
+      (
+        await call<{ duplicate_count: number }>(
+          "select duplicate_count from public.payment_events where id='tx-confirm'",
+        )
+      )[0].duplicate_count,
+    ).toBe(1);
+  });
+  it("routes an underpaid deposit and a cancelled booking to review without confirmation", async () => {
+    const payosDay = await addPayOSAvailability(3);
+    const underpaidId = await createAwaiting(
+      `${payosDay}T09:00:00+07:00`,
+      other,
+    );
+    const cancelledId = await createAwaiting(
+      `${payosDay}T11:00:00+07:00`,
+      other,
+    );
+    const expiredId = await createAwaiting(
+      `${payosDay}T13:00:00+07:00`,
+      other,
+    );
+    const cancelledLinkId = await createAwaiting(
+      `${payosDay}T15:00:00+07:00`,
+      other,
+    );
+    const expires = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    await as(null, "service_role");
+    const [underpaid] = await call<{ payos_order_code: number }>(
+      "select * from public.reserve_payos_payment_link($1,$2)",
+      [underpaidId, expires],
+    );
+    const [cancelled] = await call<{ payos_order_code: number }>(
+      "select * from public.reserve_payos_payment_link($1,$2)",
+      [cancelledId, expires],
+    );
+    const [expired] = await call<{ payos_order_code: number; id: string }>(
+      "select * from public.reserve_payos_payment_link($1,$2)",
+      [expiredId, expires],
+    );
+    const [cancelledLink] = await call<{ payos_order_code: number; id: string }>(
+      "select * from public.reserve_payos_payment_link($1,$2)",
+      [cancelledLinkId, expires],
+    );
+    await call(
+      "update public.payment_links set expires_at=now()-interval '1 minute' where id=$1",
+      [expired.id],
+    );
+    await call("update public.payment_links set status='CANCELLED' where id=$1", [
+      cancelledLink.id,
+    ]);
+    await as(other);
+    await call("select public.booking_action($1,'CANCEL','')", [cancelledId]);
+    await as(null, "service_role");
+    const process = `select public.process_payos_payment(
+      $1,$2,$3,'{}'::jsonb,true
+    ) result`;
+    const [shortPayment] = await call<{ result: { result: string } }>(process, [
+      "tx-underpaid",
+      underpaid.payos_order_code,
+      100000,
+    ]);
+    expect(shortPayment.result.result).toBe("UNDERPAID_REVIEW");
+    const [latePayment] = await call<{ result: { result: string } }>(process, [
+      "tx-cancelled",
+      cancelled.payos_order_code,
+      360000,
+    ]);
+    expect(latePayment.result.result).toBe("BOOKING_NOT_AWAITING_DEPOSIT");
+    const [expiredPayment] = await call<{ result: { result: string } }>(
+      process,
+      ["tx-expired", expired.payos_order_code, 360000],
+    );
+    expect(expiredPayment.result.result).toBe("EXPIRED_REVIEW");
+    const [cancelledLinkPayment] = await call<{ result: { result: string } }>(
+      process,
+      ["tx-cancelled-link", cancelledLink.payos_order_code, 360000],
+    );
+    expect(cancelledLinkPayment.result.result).toBe("EXPIRED_REVIEW");
+    await as(admin);
+    const [review] = await call(
+      "select status,payment_status from public.bookings where id=$1",
+      [underpaidId],
+    );
+    expect(review).toMatchObject({
+      status: "PAYMENT_REVIEW",
+      payment_status: "REPORTED",
+    });
+    await as(customer);
+    await expect(
+      call("select public.process_payos_payment('client',1,1,'{}'::jsonb,true)"),
+    ).rejects.toThrow(/permission denied/);
+    await as(admin);
+    expect(
+      await call(
+        "select * from public.payment_events where id in ('tx-underpaid','tx-cancelled','tx-expired','tx-cancelled-link')",
+      ),
+    ).toHaveLength(4);
+    const [cancelledLinkBooking] = await call(
+      "select status,payment_status from public.bookings where id=$1",
+      [cancelledLinkId],
+    );
+    expect(cancelledLinkBooking).toMatchObject({
+      status: "PAYMENT_REVIEW",
+      payment_status: "REPORTED",
+    });
   });
   it("private portfolio originals are invisible before approval and cannot be uploaded as another creator", async () => {
     const path = owner + "/test.webp";
