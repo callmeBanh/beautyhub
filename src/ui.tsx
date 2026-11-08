@@ -20,6 +20,7 @@ import {
   labels,
   money,
   minPrice,
+  packageTextItems,
   persistedReviews,
   type Provider,
   type FaqItem,
@@ -63,6 +64,19 @@ export function Badge({ status }: { status: string }) {
     <span className={`badge status-${status.toLowerCase()}`}>
       {labels[status] || status}
     </span>
+  );
+}
+
+export function FormattedCopy({ value }: { value: string }) {
+  const items = packageTextItems(value);
+  return items ? (
+    <ul className="formatted-copy-list">
+      {items.map((item, index) => (
+        <li key={`${index}-${item}`}>{item}</li>
+      ))}
+    </ul>
+  ) : (
+    <span className="formatted-copy">{value}</span>
   );
 }
 
@@ -134,9 +148,12 @@ export function ProviderCard({ p }: { p: Provider }) {
           }}
         />
         <div className="card-overlay-badges">
-          <span className="verified">
+          <span className="verified" aria-label="Hồ sơ đã duyệt">
             <ShieldCheck size={13} />
-            Hồ sơ đã duyệt
+            <span className="verified-label-full">Hồ sơ đã duyệt</span>
+            <span className="verified-label-short" aria-hidden="true">
+              Đã duyệt
+            </span>
           </span>
         </div>
         <span className="card-arrow" aria-hidden="true">

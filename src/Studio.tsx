@@ -22,6 +22,7 @@ import { useApp } from "./context";
 import {
   dateTime,
   DISTRICTS,
+  deliveryDaysLabel,
   durationHoursToMinutes,
   durationMinutesToHours,
   effectiveStatus,
@@ -37,7 +38,15 @@ import {
   type Package,
   type PackageDetailsInput,
 } from "./domain";
-import { Alert, Badge, Empty, Field, Loading, Modal } from "./ui";
+import {
+  Alert,
+  Badge,
+  Empty,
+  Field,
+  FormattedCopy,
+  Loading,
+  Modal,
+} from "./ui";
 import { BookingCard } from "./Bookings";
 
 type PackageDraft = {
@@ -94,7 +103,7 @@ function packageDraft(item: Package | "new"): PackageDraft {
     description: item.description,
     price: String(item.price),
     duration: durationMinutesToHours(item.duration),
-    days: String(item.delivery_days),
+    days: item.delivery_days == null ? "" : String(item.delivery_days),
     original_photo_count: String(item.original_photo_count ?? ""),
     edited_photo_count: String(item.edited_photo_count ?? ""),
     revision_count: String(item.revision_count ?? ""),
@@ -542,9 +551,10 @@ function PackageEditor({
                   <Clock size={13} /> {formatDuration(previewDuration)}
                 </span>
               )}
-              {draft.days && (
+              {draft.days !== "" && deliveryDaysLabel(Number(draft.days)) && (
                 <span>
-                  <Check size={13} /> Giao trong {draft.days} ngày làm việc
+                  <Check size={13} />
+                  {deliveryDaysLabel(Number(draft.days))}
                 </span>
               )}
               {draft.original_photo_count && (
@@ -560,11 +570,7 @@ function PackageEditor({
             {packageLines(draft.included_items)?.length ? (
               <div className="package-preview-includes">
                 <strong>Gói gồm gì</strong>
-                <ul>
-                  {packageLines(draft.included_items)!.map((line, index) => (
-                    <li key={`${index}-${line}`}>{line}</li>
-                  ))}
-                </ul>
+                <FormattedCopy value={draft.included_items} />
               </div>
             ) : (
               <p className="muted">Các hạng mục gói gồm sẽ hiển thị tại đây.</p>
@@ -744,7 +750,7 @@ export function Studio() {
               )}
             </section>
             <section className="panel">
-              <h2>Lịch sắp tới & đang đối soát</h2>
+              <h2>Lịch sắp tới & giao dịch cần kiểm tra</h2>
               {upcoming.length ? (
                 upcoming.map((b) => <BookingCard key={b.id} b={b} />)
               ) : (
@@ -912,9 +918,12 @@ export function Studio() {
                     <span>
                       <Clock size={13} /> {formatDuration(p.duration)}
                     </span>
-                    <span>
-                      <Check size={13} /> Giao trong {p.delivery_days} ngày làm việc
-                    </span>
+                    {deliveryDaysLabel(p.delivery_days) && (
+                      <span>
+                        <Check size={13} />
+                        {deliveryDaysLabel(p.delivery_days)}
+                      </span>
+                    )}
                     {p.edited_photo_count != null && (
                       <span>{p.edited_photo_count} ảnh chỉnh sửa</span>
                     )}

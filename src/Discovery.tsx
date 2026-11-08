@@ -41,11 +41,13 @@ import {
   TESTIMONIALS,
   TRENDING_CONCEPTS,
   filterProviders,
+  deliveryDaysLabel,
   formatDuration,
   localDate,
   minPrice,
   money,
   persistedReviews,
+  packageTextItems,
   timeOnly,
   type Package,
   type Provider,
@@ -57,6 +59,7 @@ import {
   Empty,
   FaqAccordion,
   Field,
+  FormattedCopy,
   LightboxModal,
   Loading,
   ProviderCard,
@@ -625,10 +628,10 @@ export function Explore() {
       <div className="explore-layout">
         <aside className="filter-panel">
           <div className="filter-header">
-            <h3>
+            <h2>
               <SlidersHorizontal size={17} />
               Bộ lọc chi tiết
-            </h3>
+            </h2>
             {(filters.category ||
               filters.district ||
               filters.style ||
@@ -794,8 +797,12 @@ function PackageFacts({
 }: {
   pkg: Package;
 }) {
-  const includedItems = pkg.included_items || [];
-  const customerBenefits = pkg.customer_benefits || [];
+  const includedItems = (pkg.included_items || []).flatMap(
+    (item) => packageTextItems(item) ?? [item],
+  );
+  const customerBenefits = (pkg.customer_benefits || []).flatMap(
+    (item) => packageTextItems(item) ?? [item],
+  );
   if (!includedItems.length && !customerBenefits.length) {
     return null;
   }
@@ -1089,10 +1096,12 @@ export function Creator() {
                         <span>
                           <Clock size={13} /> {formatDuration(k.duration)}
                         </span>
-                        <span>
-                          <Calendar size={13} /> Giao trong {k.delivery_days}{" "}
-                          ngày làm việc
-                        </span>
+                        {deliveryDaysLabel(k.delivery_days) && (
+                          <span>
+                            <Calendar size={13} />
+                            {deliveryDaysLabel(k.delivery_days)}
+                          </span>
+                        )}
                         {k.original_photo_count != null && (
                           <span>
                             <Camera size={13} /> {k.original_photo_count} ảnh gốc
@@ -1122,13 +1131,13 @@ export function Creator() {
                                 {k.includes?.trim() && (
                                   <div className="detail-line">
                                     <strong>Bao gồm:</strong>
-                                    <span>{k.includes}</span>
+                                    <FormattedCopy value={k.includes} />
                                   </div>
                                 )}
                                 {k.exclusions?.trim() && (
                                   <div className="detail-line">
                                     <strong>Không bao gồm / phụ phí:</strong>
-                                    <span>{k.exclusions}</span>
+                                    <FormattedCopy value={k.exclusions} />
                                   </div>
                                 )}
                               </div>
@@ -1247,7 +1256,10 @@ export function Creator() {
               {/* Deposit Breakdown */}
               <div className="deposit-breakdown">
                 <div className="breakdown-row">
-                  <span>Đặt cọc giữ lịch (30% qua payOS):</span>
+                  <span className="deposit-label">
+                    <span>Đặt cọc giữ lịch</span>
+                    <small>30% qua payOS</small>
+                  </span>
                   <strong>{money(depositAmount)}</strong>
                 </div>
                 <div className="breakdown-row muted">
@@ -1261,9 +1273,12 @@ export function Creator() {
                   <span>
                     <Clock size={13} /> {formatDuration(pkg.duration)}
                   </span>
-                  <span>
-                    <Calendar size={13} /> {pkg.delivery_days} ngày làm việc
-                  </span>
+                  {deliveryDaysLabel(pkg.delivery_days) && (
+                    <span>
+                      <Calendar size={13} />
+                      {deliveryDaysLabel(pkg.delivery_days)}
+                    </span>
+                  )}
                   {pkg.original_photo_count != null && (
                     <span>
                       <Camera size={13} /> {pkg.original_photo_count} ảnh gốc
@@ -1282,7 +1297,10 @@ export function Creator() {
                 </div>
                 {pkg.included_items?.length ? (
                   <ul>
-                    {pkg.included_items.slice(0, 2).map((item, index) => (
+                    {pkg.included_items
+                      .slice(0, 2)
+                      .flatMap((item) => packageTextItems(item) ?? [item])
+                      .map((item, index) => (
                       <li key={`${index}-${item}`}>{item}</li>
                     ))}
                   </ul>

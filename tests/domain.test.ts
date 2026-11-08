@@ -4,6 +4,8 @@ import {
   effectiveStatus,
   filterProviders,
   formatDuration,
+  deliveryDaysLabel,
+  packageTextItems,
   durationHoursToMinutes,
   durationMinutesToHours,
   SERVICES,
@@ -37,6 +39,18 @@ describe("customer journey", () => {
     expect(formatDuration(480)).toBe("8 giờ");
     expect(formatDuration(90)).toBe("1,5 giờ");
     expect(formatDuration(30)).toBe("30 phút");
+    expect(formatDuration(72)).toBe("1 giờ 12 phút");
+    expect(formatDuration(45)).toBe("45 phút");
+  });
+  it("formats delivery time and display-only package bullet lists", () => {
+    expect(deliveryDaysLabel(0)).toBe("Hoàn thành trong buổi hẹn");
+    expect(deliveryDaysLabel(null)).toBeNull();
+    expect(deliveryDaysLabel(3)).toBe("Giao trong 3 ngày làm việc");
+    expect(packageTextItems("- Ảnh chỉnh màu\n- File gốc")).toEqual([
+      "Ảnh chỉnh màu",
+      "File gốc",
+    ]);
+    expect(packageTextItems("Một đoạn văn bình thường.")).toBeNull();
   });
   it("rejects external OAuth return paths", () => {
     expect(safeNext("//evil.example")).toBe("/bookings");
