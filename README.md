@@ -20,18 +20,33 @@ Mở http://127.0.0.1:4173. Tạo `.env` từ `.env.example`, điền URL Supaba
 ## Thiết lập Supabase và Google
 
 1. Chủ dự án tạo Supabase Free project, chọn region phù hợp (ví dụ Singapore), bật bảo vệ tài khoản quản trị. Không cần nhập thông tin thẻ cho mã nguồn này.
-2. Trong SQL Editor của project **mới**, chạy lần lượt `supabase/migrations/202610050001_beta.sql`, `202610050002_operations.sql`. Không chạy migration khởi tạo lên database đang có dữ liệu cùng tên. Schema `private` không được thêm vào exposed API schemas.
-3. Chạy `supabase/enable-cron.sql` bằng SQL Editor để hết hạn giữ lịch và nhắc hẹn mỗi phút; kiểm tra trạng thái trong Integrations → Cron. Tác vụ cũng giữ lịch sử cron tối đa 7 ngày. Hàm nghiệp vụ đã được thử bằng PostgreSQL nhúng; scheduler Supabase cần kiểm tra trên project thật.
-4. Bật Google provider trong Supabase Auth. Chủ tài khoản cấu hình Google OAuth client, consent screen và callback `https://<project-ref>.supabase.co/auth/v1/callback`. Client secret chỉ nhập trong dashboard Supabase.
-5. Supabase Auth → URL Configuration: Site URL là URL production. Redirect allowlist gồm URL callback web thực tế (có query `next`): `http://127.0.0.1:4173/auth/callback**` cho local và `https://<site>.pages.dev/auth/callback**` cho production. Không allowlist wildcard mọi domain. Khi mở khách thật, Google consent screen phải cho phép khách ngoài danh sách test.
-6. Người vận hành đăng nhập Google lần đầu. Kiểm tra đúng email trong Auth → Users; cấp admin bằng UUID đã xác minh trong SQL Editor (thay placeholder):
+2. Trong SQL Editor của project **mới**, chạy lần lượt `supabase/migrations/202610050001_beta.sql`, `202610050002_operations.sql`, rồi `202611040001_package_details.sql`. Migration cuối tạo các trường chi tiết gói và RPC `save_package_details` mà form creator sử dụng. Không chạy migration khởi tạo lên database đang có dữ liệu cùng tên. Schema `private` không được thêm vào exposed API schemas.
+3. Với Supabase project đã chạy trước đó, chỉ chạy migration mới chưa áp dụng; không chạy lại hai migration khởi tạo. Để xác định migration gói đã được áp dụng, chạy:
+
+```sql
+select to_regprocedure(
+  'public.save_package_details(uuid,text,text,text,integer,integer,integer,text,text,boolean,integer,integer,integer,jsonb,jsonb)'
+);
+```
+
+Nếu kết quả là `NULL`, chạy nội dung `supabase/migrations/202611040001_package_details.sql` một lần trong SQL Editor. Sau đó làm mới cache RPC của PostgREST:
+
+```sql
+notify pgrst, 'reload schema';
+```
+
+Không chạy lại migration nếu hàm đã tồn tại; chỉ gửi lệnh reload cache nếu cần.
+4. Chạy `supabase/enable-cron.sql` bằng SQL Editor để hết hạn giữ lịch và nhắc hẹn mỗi phút; kiểm tra trạng thái trong Integrations → Cron. Tác vụ cũng giữ lịch sử cron tối đa 7 ngày. Hàm nghiệp vụ đã được thử bằng PostgreSQL nhúng; scheduler Supabase cần kiểm tra trên project thật.
+5. Bật Google provider trong Supabase Auth. Chủ tài khoản cấu hình Google OAuth client, consent screen và callback `https://<project-ref>.supabase.co/auth/v1/callback`. Client secret chỉ nhập trong dashboard Supabase.
+6. Supabase Auth → URL Configuration: Site URL là URL production. Redirect allowlist gồm URL callback web thực tế (có query `next`): `http://127.0.0.1:4173/auth/callback**` cho local và `https://<site>.pages.dev/auth/callback**` cho production. Không allowlist wildcard mọi domain. Khi mở khách thật, Google consent screen phải cho phép khách ngoài danh sách test.
+7. Người vận hành đăng nhập Google lần đầu. Kiểm tra đúng email trong Auth → Users; cấp admin bằng UUID đã xác minh trong SQL Editor (thay placeholder):
 
 ```sql
 update public.profiles set role='ADMIN' where id='<verified-auth-user-uuid>'::uuid;
 ```
 
-7. Creator đăng nhập → Không gian creator → cập nhật tên/số điện thoại trong Tài khoản, tạo hồ sơ, gói, ít nhất 3 ảnh thật có quyền sử dụng và lịch trống. Admin kiểm tra liên hệ, tác phẩm, điều kiện gói rồi duyệt. Không tải ảnh minh họa lên thành tác phẩm của creator.
-8. Admin → Cấu hình mở beta: tài khoản ngân hàng nhận cọc, link hỗ trợ HTTPS, chính sách hủy/đổi/hoàn, người trực. Chỉ mở `ready` sau khi nghiệm thu toàn bộ checklist dưới đây. Chính sách không được coi là đã rà soát pháp lý chỉ vì được nhập vào hệ thống.
+8. Creator đăng nhập → Không gian creator → cập nhật tên/số điện thoại trong Tài khoản, tạo hồ sơ, gói, ít nhất 3 ảnh thật có quyền sử dụng và lịch trống. Admin kiểm tra liên hệ, tác phẩm, điều kiện gói rồi duyệt. Không tải ảnh minh họa lên thành tác phẩm của creator.
+9. Admin → Cấu hình mở beta: tài khoản ngân hàng nhận cọc, link hỗ trợ HTTPS, chính sách hủy/đổi/hoàn, người trực. Chỉ mở `ready` sau khi nghiệm thu toàn bộ checklist dưới đây. Chính sách không được coi là đã rà soát pháp lý chỉ vì được nhập vào hệ thống.
 
 ## Deploy Cloudflare Pages Free
 

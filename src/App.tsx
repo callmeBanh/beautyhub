@@ -186,7 +186,7 @@ function Footer() {
   );
 }
 
-function CookieConsent() {
+function CookieConsent({ currentPath }: { currentPath: string }) {
   const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState<boolean | null>(null);
   const [storageWarning, setStorageWarning] = useState(false);
@@ -203,6 +203,7 @@ function CookieConsent() {
   if (!open) return null;
   const choose = (accepted: boolean) => {
     const persisted = setAnalyticsConsent(accepted);
+    if (accepted) trackPageView(currentPath);
     setChoice(accepted);
     setStorageWarning(!persisted);
     setOpen(!persisted);
@@ -788,11 +789,16 @@ export default function App() {
   useEffect(() => initializeAnalytics(), []);
   useEffect(() => {
     const path = location.pathname;
-    if (path === "/explore" && user) void track("search");
+    if (path === "/explore" && user) {
+      const searchTerm = new URLSearchParams(location.search).get("q")?.trim();
+      void track("search", searchTerm ? { search_term: searchTerm } : {});
+    }
     else if (path.startsWith("/creators/"))
       void track("provider_view", {}, Boolean(user));
     else if (path.startsWith("/checkout/") && user)
-      void track("booking_started");
+      void track("booking_started", {
+        package_id: path.split("/")[2],
+      });
   }, [location.pathname, location.search, user?.id]);
   const [offline, setOffline] = useState(!navigator.onLine);
   useEffect(() => {
@@ -906,7 +912,7 @@ export default function App() {
         </Routes>
       </main>
       <Footer />
-      <CookieConsent />
+      <CookieConsent currentPath={location.pathname} />
       <FloatingContact supportUrl={settings?.support_url} />
       <MobileBottomNav />
     </>
