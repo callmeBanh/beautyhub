@@ -1,20 +1,54 @@
 import { describe, expect, it } from "vitest";
+import { createHmac } from "node:crypto";
 import {
   canonicalPayOSData,
   createPayOSWebhookSignature,
-  isPayOSWebhookProbe,
   timingSafeHexEqual,
 } from "../supabase/functions/_shared/payos";
 
 describe("payOS webhook signature", () => {
-  it("uses the documented sorted and encoded data representation", () => {
+  it("matches the official Node SDK signature for a complete payment webhook payload", async () => {
+    const data = {
+      orderCode: 123,
+      amount: 3000,
+      description: "VQRIO order 123",
+      accountNumber: "12345678",
+      reference: "TF230204212323",
+      transactionDateTime: "2023-02-04 18:25:00",
+      paymentLinkId: "124c33293c93417ab7879e14c8d9eb18",
+      code: "00",
+      desc: "Thành công",
+      counterAccountBankId: "",
+      counterAccountBankName: null,
+      counterAccountName: "",
+      counterAccountNumber: null,
+      virtualAccountName: "",
+      virtualAccountNumber: null,
+      currency: "VND",
+    };
+    const canonical =
+      "accountNumber=12345678&amount=3000&code=00&counterAccountBankId=&counterAccountBankName=&counterAccountName=&counterAccountNumber=&currency=VND&desc=Thành công&description=VQRIO order 123&orderCode=123&paymentLinkId=124c33293c93417ab7879e14c8d9eb18&reference=TF230204212323&transactionDateTime=2023-02-04 18:25:00&virtualAccountName=&virtualAccountNumber=";
+    const checksumKey = "test-only-checksum-key";
+    const expected = createHmac("sha256", checksumKey)
+      .update(canonical)
+      .digest("hex");
+
+    expect(canonicalPayOSData(data)).toBe(canonical);
+    expect(await createPayOSWebhookSignature(data, checksumKey)).toBe(expected);
+  });
+
+  it("matches official Node SDK serialization for arrays and nested objects", () => {
     expect(
       canonicalPayOSData({
-        z: "a b",
-        items: [{ value: "x/y" }],
+        nested: { value: "left/right" },
+        items: [{ z: "a b", a: 1 }],
         amount: 1200,
+        nullValue: null,
+        empty: "",
       }),
-    ).toBe("amount=1200&items=%5B%7B%22value%22%3A%22x%2Fy%22%7D%5D&z=a%20b");
+    ).toBe(
+      'amount=1200&empty=&items=[{"a":1,"z":"a b"}]&nested=[object Object]&nullValue=',
+    );
   });
 
   it("accepts a matching HMAC and rejects a changed signature", async () => {
@@ -28,24 +62,4 @@ describe("payOS webhook signature", () => {
     expect(timingSafeHexEqual("invalid", signature)).toBe(false);
   });
 
-  it("recognizes the successful empty-data registration probe without accepting transactions", () => {
-    expect(
-      isPayOSWebhookProbe({
-        code: "00",
-        desc: "success",
-        success: true,
-        data: {},
-        signature: "probe-signature",
-      }),
-    ).toBe(true);
-    expect(
-      isPayOSWebhookProbe({
-        code: "00",
-        desc: "success",
-        success: true,
-        data: { orderCode: 123 },
-        signature: "probe-signature",
-      }),
-    ).toBe(false);
-  });
 });

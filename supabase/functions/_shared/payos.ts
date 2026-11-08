@@ -1,49 +1,30 @@
 type JsonRecord = Record<string, unknown>;
 
-export function isPayOSWebhookProbe(body: {
-  code?: unknown;
-  desc?: unknown;
-  success?: unknown;
-  data?: unknown;
-  signature?: unknown;
-}) {
-  return (
-    body.code === "00" &&
-    body.desc === "success" &&
-    body.success === true &&
-    typeof body.signature === "string" &&
-    body.signature.length > 0 &&
-    body.data !== null &&
-    typeof body.data === "object" &&
-    !Array.isArray(body.data) &&
-    Object.keys(body.data).length === 0
+function sortObjDataByKey(value: object): JsonRecord {
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, (value as JsonRecord)[key]]),
   );
 }
 
-function sortedValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortedValue);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as JsonRecord)
-        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-        .map(([key, item]) => [key, sortedValue(item)]),
-    );
-  }
-  return value;
-}
-
 export function canonicalPayOSData(data: JsonRecord) {
-  const sorted = sortedValue(data) as JsonRecord;
-  return Object.keys(sorted)
+  return Object.keys(data)
+    .sort()
+    .filter((key) => data[key] !== undefined)
     .map((key) => {
-      const value = sorted[key];
-      const serialized =
-        value === null || value === undefined
-          ? ""
-          : typeof value === "object"
-            ? JSON.stringify(value)
-            : String(value);
-      return `${encodeURIComponent(key)}=${encodeURIComponent(serialized)}`;
+      let value = data[key];
+      if (value && Array.isArray(value)) {
+        value = JSON.stringify(
+          value.map((item) =>
+            item && typeof item === "object"
+              ? sortObjDataByKey(item)
+              : item,
+          ),
+        );
+      }
+      if ([null, undefined, "undefined", "null"].includes(value)) value = "";
+      return `${key}=${value}`;
     })
     .join("&");
 }
