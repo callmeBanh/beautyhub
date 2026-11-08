@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canonicalPayOSData,
   createPayOSWebhookSignature,
+  isPayOSWebhookProbe,
   timingSafeHexEqual,
 } from "../supabase/functions/_shared/payos";
 
@@ -25,5 +26,26 @@ describe("payOS webhook signature", () => {
     const changed = `${signature[0] === "0" ? "1" : "0"}${signature.slice(1)}`;
     expect(timingSafeHexEqual(changed, signature)).toBe(false);
     expect(timingSafeHexEqual("invalid", signature)).toBe(false);
+  });
+
+  it("recognizes the successful empty-data registration probe without accepting transactions", () => {
+    expect(
+      isPayOSWebhookProbe({
+        code: "00",
+        desc: "success",
+        success: true,
+        data: {},
+        signature: "probe-signature",
+      }),
+    ).toBe(true);
+    expect(
+      isPayOSWebhookProbe({
+        code: "00",
+        desc: "success",
+        success: true,
+        data: { orderCode: 123 },
+        signature: "probe-signature",
+      }),
+    ).toBe(false);
   });
 });

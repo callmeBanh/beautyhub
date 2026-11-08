@@ -1,12 +1,24 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   createPayOSWebhookSignature,
+  isPayOSWebhookProbe,
   timingSafeHexEqual,
 } from "../_shared/payos.ts";
 
 const maxBodyBytes = 64 * 1024;
 
-async function readLimitedBody(request: Request) {
+type WebhookBody = {
+  code?: unknown;
+  desc?: unknown;
+  success?: unknown;
+  data?: Record<string, unknown>;
+  signature?: unknown;
+};
+
+async function readLimitedBody(
+  request: Request,
+  onLength: (length: number) => void,
+): Promise<WebhookBody> {
   const reader = request.body?.getReader();
   if (!reader) throw new Error("Missing body");
   const chunks: Uint8Array[] = [];
@@ -15,6 +27,7 @@ async function readLimitedBody(request: Request) {
     const { done, value } = await reader.read();
     if (done) break;
     size += value.byteLength;
+    onLength(size);
     if (size > maxBodyBytes) {
       await reader.cancel();
       throw new Error("Body too large");
@@ -27,12 +40,7 @@ async function readLimitedBody(request: Request) {
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return JSON.parse(new TextDecoder().decode(bytes)) as {
-    code?: unknown;
-    success?: unknown;
-    data?: Record<string, unknown>;
-    signature?: unknown;
-  };
+  return JSON.parse(new TextDecoder().decode(bytes)) as WebhookBody;
 }
 
 function reply(status: number, body: Record<string, unknown>) {
@@ -42,40 +50,80 @@ function reply(status: number, body: Record<string, unknown>) {
   });
 }
 
+function logRejection(
+  step: string,
+  bodyLength: number,
+  body?: WebhookBody,
+) {
+  const bodyFields =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? Object.keys(body)
+      : [];
+  const dataFields =
+    body?.data &&
+    typeof body.data === "object" &&
+    !Array.isArray(body.data)
+      ? Object.keys(body.data)
+      : [];
+  console.warn(
+    JSON.stringify({
+      event: "payos_webhook_rejected",
+      step,
+      bodyLength,
+      fieldNames: { body: bodyFields, data: dataFields },
+    }),
+  );
+}
+
 Deno.serve(async (request) => {
-  if (request.method !== "POST") return reply(405, { error: "Method not allowed." });
-  if (Number(request.headers.get("content-length") || 0) > maxBodyBytes) {
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (request.method !== "POST") {
+    logRejection("unsupported_method", contentLength);
+    return reply(405, { error: "Method not allowed." });
+  }
+  if (contentLength > maxBodyBytes) {
+    logRejection("body_too_large", contentLength);
     return reply(413, { error: "Request too large." });
   }
 
-  let body: Awaited<ReturnType<typeof readLimitedBody>>;
+  let bodyLength = contentLength;
+  let body: WebhookBody;
   try {
-    body = await readLimitedBody(request);
+    body = await readLimitedBody(request, (length) => {
+      bodyLength = length;
+    });
   } catch {
+    logRejection("invalid_body", bodyLength);
     return reply(400, { error: "Invalid webhook body." });
   }
   const checksumKey = Deno.env.get("PAYOS_CHECKSUM_KEY");
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!checksumKey || !supabaseUrl || !serviceKey) {
+    logRejection("missing_secret", bodyLength, body);
     return reply(503, { error: "Webhook is not configured." });
   }
+
+  if (isPayOSWebhookProbe(body)) {
+    return reply(200, { code: "00", desc: "success" });
+  }
+
   if (
     !body.data ||
     typeof body.data !== "object" ||
     Array.isArray(body.data) ||
     typeof body.signature !== "string"
   ) {
+    logRejection("bad_fields", bodyLength, body);
     return reply(400, { error: "Invalid webhook fields." });
   }
 
+  let step = "signature_verification";
   try {
     const expected = await createPayOSWebhookSignature(body.data, checksumKey);
     if (!timingSafeHexEqual(body.signature, expected)) {
+      logRejection("signature_mismatch", bodyLength, body);
       return reply(401, { error: "Invalid signature." });
-    }
-    if (body.code === "00" && Object.keys(body.data).length === 0) {
-      return reply(200, { code: "00", desc: "success" });
     }
     if (
       typeof body.data.orderCode !== "number" ||
@@ -87,8 +135,10 @@ Deno.serve(async (request) => {
       body.data.reference.length < 1 ||
       body.data.reference.length > 160
     ) {
+      logRejection("bad_fields", bodyLength, body);
       return reply(400, { error: "Invalid webhook fields." });
     }
+    step = "payment_recording";
     const service = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
@@ -107,6 +157,11 @@ Deno.serve(async (request) => {
     if (error) return reply(500, { error: "Could not record payment event." });
     return reply(200, { code: "00", desc: "success" });
   } catch {
+    logRejection(
+      step === "signature_verification" ? "signature_error" : "recording_error",
+      bodyLength,
+      body,
+    );
     return reply(500, { error: "Could not verify or record webhook." });
   }
 });
