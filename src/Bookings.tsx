@@ -385,6 +385,10 @@ export function BookingCard({ b }: { b: Booking }) {
 }
 export function BookingDetail() {
   const { id } = useParams();
+  const [params] = useSearchParams();
+  const payOSCancelled = params.get("cancel") === "true";
+  const payOSReturn =
+    payOSCancelled || params.has("code") || params.has("orderCode");
   const { user, profile, providers, settings, toast } = useApp();
   const [b, setB] = useState<Booking | null>(null),
     [events, setEvents] = useState<BookingEvent[]>([]),
@@ -397,9 +401,9 @@ export function BookingDetail() {
     [busy, setBusy] = useState(false),
     [creatingPaymentLink, setCreatingPaymentLink] = useState(false),
     [payosError, setPayosError] = useState(false),
+    [returnTimedOut, setReturnTimedOut] = useState(false),
     [payosLink, setPayosLink] = useState<{
       checkoutUrl: string;
-      qrCode?: string;
       expiresAt: string;
     } | null>(null);
   const now = useClock();
@@ -412,7 +416,37 @@ export function BookingDetail() {
         .single();
       if (result.error) throw result.error;
       setB(result.data);
-      if (result.data.status !== "AWAITING_DEPOSIT") setPayosLink(null);
+      if (
+        result.data.status === "AWAITING_DEPOSIT" &&
+        result.data.customer_id === user?.id
+      ) {
+        const linkResult = await client()
+          .from("payment_links")
+          .select("checkout_url,expires_at")
+          .eq("booking_id", id)
+          .eq("status", "PENDING")
+          .gt("expires_at", new Date().toISOString())
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (linkResult.error) {
+          console.warn("Unable to load the pending PayOS link", linkResult.error);
+          setPayosLink(null);
+        } else if (
+          typeof linkResult.data?.checkout_url === "string" &&
+          linkResult.data.checkout_url.startsWith("https://") &&
+          typeof linkResult.data.expires_at === "string"
+        ) {
+          setPayosLink({
+            checkoutUrl: linkResult.data.checkout_url,
+            expiresAt: linkResult.data.expires_at,
+          });
+        } else {
+          setPayosLink(null);
+        }
+      } else {
+        setPayosLink(null);
+      }
       const [ev, ts, rv, ct] = await Promise.all([
         client()
           .from("booking_events")
@@ -441,9 +475,29 @@ export function BookingDetail() {
   }
   useEffect(() => {
     void load();
-    const interval = setInterval(() => void load(), 30000);
+    const isConfirmingPayOS =
+      payOSReturn &&
+      !payOSCancelled &&
+      b?.status !== "CONFIRMED" &&
+      b?.status !== "PAYMENT_REVIEW";
+    const interval = setInterval(
+      () => void load(),
+      isConfirmingPayOS ? 5000 : 30000,
+    );
     return () => clearInterval(interval);
-  }, [id]);
+  }, [id, user?.id, payOSReturn, payOSCancelled, b?.status]);
+  useEffect(() => {
+    if (
+      !payOSReturn ||
+      payOSCancelled ||
+      b?.status === "CONFIRMED" ||
+      b?.status === "PAYMENT_REVIEW"
+    ) {
+      return;
+    }
+    const timeout = setTimeout(() => setReturnTimedOut(true), 120000);
+    return () => clearTimeout(timeout);
+  }, [payOSReturn, payOSCancelled, b?.status]);
   async function action(name: string, detail = "") {
     setBusy(true);
     try {
@@ -479,9 +533,9 @@ export function BookingDetail() {
       }
       setPayosLink({
         checkoutUrl: data.checkoutUrl,
-        qrCode: typeof data.qrCode === "string" ? data.qrCode : undefined,
         expiresAt: data.expiresAt,
       });
+      window.location.assign(data.checkoutUrl);
     } catch (e) {
       console.error("Unable to create PayOS checkout link", e);
       setPayosError(true);
@@ -586,16 +640,55 @@ export function BookingDetail() {
                         {settings?.support_url?.startsWith("https://") ? <a className="btn ghost" href={settings.support_url} target="_blank" rel="noreferrer">Liên hệ hỗ trợ</a> : <button className="btn ghost" onClick={() => setModal("SUPPORT")}>Liên hệ hỗ trợ</button>}
                       </div>
                     )}
+                    {payOSCancelled && (
+                      <Alert>
+                        Bạn đã hủy thanh toán trên payOS. Bạn có thể thử lại khi sẵn sàng.
+                      </Alert>
+                    )}
+                    {payOSReturn && !payOSCancelled && !returnTimedOut && (
+                      <Alert>Đang xác nhận thanh toán...</Alert>
+                    )}
+                    {payOSReturn && !payOSCancelled && returnTimedOut && (
+                      <Alert>
+                        Hệ thống đang xác nhận, vui lòng kiểm tra lại sau ít phút.{" "}
+                        <button
+                          className="text-button"
+                          onClick={() => window.location.reload()}
+                        >
+                          Làm mới
+                        </button>
+                      </Alert>
+                    )}
                     <div className="payos-checkout">
-                      <button className="btn" disabled={creatingPaymentLink} onClick={() => void createPayOSLink()}>
-                        {creatingPaymentLink ? "Đang tạo liên kết thanh toán…" : "Thanh toán cọc qua payOS"}
-                      </button>
+                      {payosLink && Date.parse(payosLink.expiresAt) > now ? (
+                        <a
+                          className="btn"
+                          href={payosLink.checkoutUrl}
+                          aria-label="Tiếp tục thanh toán trên payOS"
+                        >
+                          {payOSCancelled
+                            ? "Thử lại thanh toán"
+                            : "Tiếp tục thanh toán"}
+                        </a>
+                      ) : (
+                        <button
+                          className="btn"
+                          disabled={creatingPaymentLink}
+                          onClick={() => void createPayOSLink()}
+                        >
+                          {creatingPaymentLink
+                            ? "Đang tạo liên kết thanh toán…"
+                            : payOSCancelled
+                              ? "Thử lại thanh toán"
+                              : "Thanh toán cọc qua payOS"}
+                        </button>
+                      )}
                       {payosLink && (
-                        <div>
-                          <a href={payosLink.checkoutUrl} target="_blank" rel="noreferrer">Mở trang thanh toán payOS</a>
-                          {payosLink.qrCode && (payosLink.qrCode.startsWith("data:image/") || payosLink.qrCode.startsWith("https://")) && <img src={payosLink.qrCode} alt="Mã QR thanh toán payOS" />}
-                          <p>{Date.parse(payosLink.expiresAt) > now ? `Liên kết hết hạn sau ${Math.floor((Date.parse(payosLink.expiresAt) - now) / 60000)} phút.` : "Liên kết đã hết hạn. Vui lòng tạo liên kết mới."}</p>
-                        </div>
+                        <p>
+                          {Date.parse(payosLink.expiresAt) > now
+                            ? `Liên kết hết hạn sau ${Math.max(0, Math.ceil((Date.parse(payosLink.expiresAt) - now) / 60000))} phút.`
+                            : "Liên kết đã hết hạn. Tạo liên kết mới để thanh toán."}
+                        </p>
                       )}
                     </div>
                     <div className="actions">
