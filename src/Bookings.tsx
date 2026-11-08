@@ -20,6 +20,7 @@ import { useApp } from "./context";
 import {
   dateTime,
   effectiveStatus,
+  deliveryDaysLabel,
   errorText,
   formatDuration,
   labels,
@@ -36,6 +37,7 @@ import {
   Breadcrumb,
   Empty,
   Field,
+  FormattedCopy,
   Loading,
   Modal,
   useClock,
@@ -242,13 +244,16 @@ export function Checkout() {
               {draft.district || "Chọn khu vực"}
             </span>
           </div>
-          <p>
-            <strong>Bao gồm:</strong> {pkg.includes || pkg.description}
-          </p>
-          <p>
-            <strong>Chưa bao gồm:</strong>{" "}
-            {pkg.exclusions || "Không có phụ phí được công bố"}
-          </p>
+          <div className="package-copy">
+            <strong>Bao gồm:</strong>
+            <FormattedCopy value={pkg.includes || pkg.description} />
+          </div>
+          <div className="package-copy">
+            <strong>Chưa bao gồm:</strong>
+            <FormattedCopy
+              value={pkg.exclusions || "Không có phụ phí được công bố"}
+            />
+          </div>
           <div className="money-line">
             <span>Tổng giá gói</span>
             <strong>{money(pkg.price)}</strong>
@@ -370,7 +375,7 @@ export function BookingCard({ b }: { b: Booking }) {
       </div>
       <div>
         <small>{b.snapshot.provider_name}</small>
-        <h3>{b.snapshot.package.name}</h3>
+        <h2>{b.snapshot.package.name}</h2>
         <p>
           {dateTime(b.starts_at)} · {b.district}
         </p>
@@ -570,7 +575,7 @@ export function BookingDetail() {
     EXPIRED: "Thời hạn giữ lịch đã kết thúc.",
   };
   return (
-    <div className="page">
+    <div className="page booking-detail-page">
       <Link
         className="back-link"
         to={admin ? "/admin" : owner ? "/studio" : "/bookings"}
@@ -707,7 +712,7 @@ export function BookingDetail() {
               <>
                 <h2>Giao dịch cọc đang được kiểm tra</h2>
                 <p>
-                  Lịch đang được giữ trong thời gian đối soát. Bạn không cần
+                  Lịch đang được giữ trong khi kiểm tra giao dịch. Bạn không cần
                   chuyển thêm. Kiểm tra cập nhật tại đây hoặc liên hệ hỗ trợ nếu
                   cần.
                 </p>
@@ -839,17 +844,30 @@ export function BookingDetail() {
               </div>
             </div>
             <p>{b.snapshot.package.description}</p>
-            <p>
-              <strong>Bao gồm:</strong> {b.snapshot.package.includes}
-            </p>
-            <p>
-              <strong>Chưa bao gồm:</strong>{" "}
-              {b.snapshot.package.exclusions || "Không có phụ phí được công bố"}
-            </p>
-            <p>
-              <strong>Thời hạn giao:</strong> {b.snapshot.package.delivery_days}{" "}
-              ngày sau buổi hẹn.
-            </p>
+            <div className="package-copy">
+              <strong>Bao gồm:</strong>
+              <FormattedCopy value={b.snapshot.package.includes} />
+            </div>
+            <div className="package-copy">
+              <strong>Chưa bao gồm:</strong>
+              <FormattedCopy
+                value={
+                  b.snapshot.package.exclusions ||
+                  "Không có phụ phí được công bố"
+                }
+              />
+            </div>
+            {deliveryDaysLabel(b.snapshot.package.delivery_days) && (
+              <p>
+                <strong>
+                  {b.snapshot.package.delivery_days === 0
+                    ? "Hoàn thành trong buổi hẹn"
+                    : "Thời hạn giao:"}
+                </strong>
+                {b.snapshot.package.delivery_days > 0 &&
+                  ` ${b.snapshot.package.delivery_days} ngày làm việc sau buổi hẹn`}
+              </p>
+            )}
             {b.notes && (
               <p>
                 <strong>Ghi chú:</strong> {b.notes}
@@ -868,8 +886,8 @@ export function BookingDetail() {
               {events.map((ev) => (
                 <li key={ev.id}>
                   <strong>{labels[ev.action] || ev.action}</strong>
-                  {customer && <p>{ev.detail}</p>}
                   <small>{dateTime(ev.created_at)}</small>
+                  {customer && <p>{ev.detail}</p>}
                 </li>
               ))}
             </ol>
@@ -1046,7 +1064,7 @@ export function BookingDetail() {
             {modal === "CANCEL" && (
               <p>
                 Chỉ hủy trực tiếp khi chưa thanh toán cọc. Nếu đã thanh toán, đóng
-                cửa sổ này và chọn hỗ trợ để đối soát.
+                  cửa sổ này và chọn hỗ trợ để kiểm tra giao dịch.
               </p>
             )}
             {modal === "COMPLETE" && (

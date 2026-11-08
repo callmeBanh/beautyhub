@@ -57,7 +57,7 @@ export const labels: Record<string, string> = {
   REJECT: "Creator đã từ chối có lý do",
   REQUESTED: "Chờ creator phản hồi",
   AWAITING_DEPOSIT: "Chờ đặt cọc",
-  PAYMENT_REVIEW: "Đang đối soát tiền",
+  PAYMENT_REVIEW: "Đang kiểm tra giao dịch cọc",
   CONFIRMED: "Đã xác nhận",
   COMPLETED: "Đã hoàn thành",
   CANCELLED: "Đã hủy",
@@ -73,8 +73,8 @@ export const labels: Record<string, string> = {
   APPROVED: "Đã xác minh",
   SUSPENDED: "Tạm ngừng",
   ACCEPT: "Creator đã nhận lịch",
-  REPORT_PAYMENT: "Cần kiểm tra giao dịch",
-  VERIFY_PAYMENT: "Đã đối soát tiền cọc",
+  REPORT_PAYMENT: "Giao dịch cọc cần kiểm tra",
+  VERIFY_PAYMENT: "Đã nhận cọc qua payOS",
   PAYMENT_NOT_FOUND: "Chưa tìm thấy giao dịch",
   CANCEL: "Đã hủy yêu cầu",
   COMPLETE: "Dịch vụ đã hoàn thành",
@@ -276,7 +276,32 @@ export function durationMinutesToHours(minutes: number): string {
 }
 export function formatDuration(minutes: number): string {
   if (minutes < 60) return `${minutes} phút`;
-  return `${durationMinutesToHours(minutes)} giờ`;
+  if (minutes % 30 === 0) {
+    return `${durationMinutesToHours(minutes)} giờ`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return hours ? `${hours} giờ ${remainder} phút` : `${minutes} phút`;
+}
+export function deliveryDaysLabel(
+  days: number | null | undefined,
+): string | null {
+  if (days == null) return null;
+  return days <= 0
+    ? "Hoàn thành trong buổi hẹn"
+    : `Giao trong ${days} ngày làm việc`;
+}
+export function packageTextItems(value: string | null | undefined) {
+  if (!value?.trim()) return null;
+  const lines = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!/\r?\n/.test(value) && !/^\s*-\s+/m.test(value)) return null;
+  const items = lines
+    .map((line) => line.replace(/^\s*-\s+/, "").trim())
+    .filter(Boolean);
+  return items.length ? items : null;
 }
 export const dateTime = (v: string) =>
   new Date(v).toLocaleString("vi-VN", {

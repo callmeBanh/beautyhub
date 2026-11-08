@@ -147,7 +147,7 @@ function Footer() {
         </div>
 
         <div className="footer-links-col">
-          <h4>Khám phá & Dịch vụ</h4>
+          <h2>Khám phá & Dịch vụ</h2>
           <Link to="/explore?category=Photographer">Nhiếp ảnh gia TP.HCM</Link>
           <Link to="/explore?category=Makeup+Artist">Chuyên viên trang điểm</Link>
           <Link to="/explore?style=Korean">Layout tone Hàn Quốc</Link>
@@ -156,7 +156,7 @@ function Footer() {
         </div>
 
         <div className="footer-links-col">
-          <h4>Quy trình & Hỗ trợ</h4>
+          <h2>Quy trình & Hỗ trợ</h2>
           <Link to="/how-it-works">Cách thức đặt lịch 4 bước</Link>
           <Link to="/policies">Chính sách cọc & Hoàn tiền 100%</Link>
           <Link to="/studio">Không gian dành cho Creator</Link>
