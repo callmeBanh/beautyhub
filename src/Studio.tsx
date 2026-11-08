@@ -97,6 +97,10 @@ export function Studio() {
   return (
     <div className="workspace">
       <aside className="workspace-sidebar">
+        <Link className="workspace-brand" to="/" aria-label="BeautyHub trang chủ">
+          <img src="/assets/brand-mark.png" alt="" width="44" height="44" />
+          <span>beautyhub</span>
+        </Link>
         <span className="eyebrow">CREATOR SPACE</span>
         <h2>{own?.name || "Góc sáng tạo của bạn"}</h2>
         {own && <Badge status={own.status} />}

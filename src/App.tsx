@@ -51,8 +51,15 @@ function Header() {
   return (
     <header className="header">
       <Link className="brand" to="/" aria-label="BeautyHub trang chủ">
-        <img src="/assets/brand-mark.png" alt="" className="brand-icon" width="32" height="32" />
-        beautyhub<span className="beta">BETA</span>
+        <img
+          src="/assets/brand-mark.png"
+          alt=""
+          className="brand-icon"
+          width="60"
+          height="60"
+        />
+        <span className="brand-word">beautyhub</span>
+        <span className="beta">BETA</span>
       </Link>
       <nav className={menu ? "nav open" : "nav"}>
         <NavLink to="/explore">Khám phá creator</NavLink>
@@ -112,10 +119,10 @@ function Footer() {
               src="/assets/brand-mark.png"
               alt=""
               className="brand-icon"
-              width="36"
-              height="36"
+              width="64"
+              height="64"
             />
-            <span className="brand-text">beautyhub</span>
+            <span className="brand-word">beautyhub</span>
           </Link>
           <p className="footer-tagline">
             Nền tảng tuyển chọn và kết nối Photographer & Makeup Artist chuyên

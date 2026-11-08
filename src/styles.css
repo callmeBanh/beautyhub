@@ -4473,3 +4473,111 @@ a:not(.btn):active {
     padding-bottom: 64px;
   }
 }
+
+.brand {
+  gap: 10px;
+  font-size: 29px;
+}
+.brand .brand-icon {
+  display: block;
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+.brand-word {
+  line-height: 1;
+}
+.brand .beta {
+  font-size: 10px;
+}
+.footer-brand-col .brand {
+  font-size: 27px;
+}
+.footer-brand-col .brand .brand-icon {
+  width: 64px;
+  height: 64px;
+}
+.auth-logo-img {
+  width: 112px;
+  height: 112px;
+  object-fit: contain;
+}
+.workspace-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+  color: var(--color-on-dark);
+  font-family: "Lora", Georgia, serif;
+  font-size: 18px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.workspace-brand img {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+}
+@media (min-width: 851px) and (max-width: 1024px) {
+  .nav {
+    display: none;
+  }
+  .nav.open {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: absolute;
+    top: 80px;
+    left: 0;
+    right: 0;
+    padding: 20px;
+    background: var(--color-white);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav.open a {
+    padding: 15px;
+  }
+  .menu-toggle {
+    display: grid;
+  }
+}
+@media (max-width: 850px) {
+  .brand {
+    gap: 7px;
+    font-size: 23px;
+  }
+  .brand .brand-icon {
+    width: 48px;
+    height: 48px;
+  }
+  .brand .beta {
+    font-size: 8px;
+  }
+  .footer-brand-col .brand .brand-icon {
+    width: 56px;
+    height: 56px;
+  }
+  .auth-logo-img {
+    width: 96px;
+    height: 96px;
+  }
+}
+@media (max-width: 420px) {
+  .header {
+    padding-inline: 12px;
+  }
+  .header .brand {
+    gap: 5px;
+    font-size: 21px;
+  }
+  .header .brand .brand-icon {
+    width: 42px;
+    height: 42px;
+  }
+  .header .brand .beta {
+    font-size: 7px;
+    padding: 2px 3px;
+    margin-left: 0;
+  }
+}
