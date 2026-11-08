@@ -15,7 +15,6 @@ import {
   type Provider,
   type Review,
 } from "../src/domain";
-import { resolveBankCode, buildVietQrUrl } from "../src/vietqr";
 describe("customer journey", () => {
   it("labels package needs in Vietnamese without changing stored values", () => {
     expect(SERVICES).toContain("anniversary");
@@ -147,20 +146,5 @@ describe("customer journey", () => {
         message: "Could not find the function public.other_rpc()",
       }),
     ).toContain("public.other_rpc()");
-  });
-  it("resolves bank names and builds standardized VietQR URL", () => {
-    expect(resolveBankCode("Ngân hàng TMCP Quân Đội (MB)")).toBe("mbbank");
-    expect(resolveBankCode("Vietcombank")).toBe("vietcombank");
-    expect(resolveBankCode("Techcombank")).toBe("techcombank");
-    const url = buildVietQrUrl({
-      bankName: "MBBank",
-      accountNo: "0987 654 321",
-      accountHolder: "NGUYEN VAN A",
-      amount: 300000,
-      memo: "BH 123456",
-    });
-    expect(url).toBe(
-      "https://img.vietqr.io/image/mbbank-0987654321-compact2.png?amount=300000&addInfo=BH%20123456&accountName=NGUYEN%20VAN%20A",
-    );
   });
 });

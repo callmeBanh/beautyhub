@@ -5,15 +5,16 @@ const responseHeaders = { "content-type": "application/json" };
 const maxBodyBytes = 16 * 1024;
 const allowedOrigins = (Deno.env.get("ALLOWED_ORIGINS") || "")
   .split(",")
-  .map((origin) => origin.trim())
+  .map((origin) => origin.trim().replace(/\/+$/, ""))
   .filter(Boolean);
 
 function reply(status: number, body: Record<string, unknown>, origin?: string) {
+  const normalizedOrigin = origin?.trim().replace(/\/+$/, "");
   const corsHeaders =
-    origin && allowedOrigins.includes(origin)
+    normalizedOrigin && allowedOrigins.includes(normalizedOrigin)
       ? {
-          "access-control-allow-origin": origin,
-          "access-control-allow-headers": "authorization, apikey, content-type",
+          "access-control-allow-origin": normalizedOrigin,
+          "access-control-allow-headers": "authorization, apikey, content-type, x-client-info",
           "access-control-allow-methods": "POST, OPTIONS",
           vary: "Origin",
         }
@@ -54,13 +55,17 @@ async function readJson(request: Request) {
 
 Deno.serve(async (request) => {
   const origin = request.headers.get("origin") || undefined;
+  const normalizedOrigin = origin?.trim().replace(/\/+$/, "");
   if (request.method === "OPTIONS") {
-    return origin && allowedOrigins.includes(origin)
-      ? reply(204, {}, origin)
-      : reply(403, { error: "Origin not allowed." });
+    if (!normalizedOrigin || !allowedOrigins.includes(normalizedOrigin)) {
+      console.warn("create-payment-link: origin rejected during preflight");
+      return reply(403, { error: "Origin not allowed." });
+    }
+    return reply(204, {}, origin);
   }
   if (request.method !== "POST") return reply(405, { error: "Method not allowed." });
-  if (origin && !allowedOrigins.includes(origin)) {
+  if (origin && (!normalizedOrigin || !allowedOrigins.includes(normalizedOrigin))) {
+    console.warn("create-payment-link: origin rejected");
     return reply(403, { error: "Origin not allowed." });
   }
   if (Number(request.headers.get("content-length") || 0) > maxBodyBytes) {
@@ -220,7 +225,10 @@ Deno.serve(async (request) => {
       },
       origin,
     );
-  } catch {
+  } catch (error) {
+    console.error("create-payment-link: payment-link creation failed", {
+      step: error instanceof Error ? error.message : "unknown",
+    });
     return reply(503, { error: "Could not create a PayOS payment link." }, origin);
   }
 });

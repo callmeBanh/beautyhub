@@ -11,13 +11,11 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock,
-  Copy,
   MapPin,
   Phone,
   ShieldCheck,
 } from "lucide-react";
 import { client, rpc, track } from "./api";
-import { buildVietQrUrl } from "./vietqr";
 import { useApp } from "./context";
 import {
   dateTime,
@@ -398,8 +396,10 @@ export function BookingDetail() {
     [modal, setModal] = useState(""),
     [busy, setBusy] = useState(false),
     [creatingPaymentLink, setCreatingPaymentLink] = useState(false),
+    [payosError, setPayosError] = useState(false),
     [payosLink, setPayosLink] = useState<{
       checkoutUrl: string;
+      qrCode?: string;
       expiresAt: string;
     } | null>(null);
   const now = useClock();
@@ -463,7 +463,7 @@ export function BookingDetail() {
   }
   async function createPayOSLink() {
     setCreatingPaymentLink(true);
-    setError("");
+    setPayosError(false);
     try {
       const { data, error: invokeError } = await client().functions.invoke(
         "create-payment-link",
@@ -479,12 +479,12 @@ export function BookingDetail() {
       }
       setPayosLink({
         checkoutUrl: data.checkoutUrl,
+        qrCode: typeof data.qrCode === "string" ? data.qrCode : undefined,
         expiresAt: data.expiresAt,
       });
     } catch (e) {
-      setError(
-        `${errorText(e)} Luồng chuyển khoản VietQR bên dưới vẫn khả dụng.`,
-      );
+      console.error("Unable to create PayOS checkout link", e);
+      setPayosError(true);
     } finally {
       setCreatingPaymentLink(false);
     }
@@ -544,7 +544,7 @@ export function BookingDetail() {
                 <p>
                   Hạn phản hồi:{" "}
                   <strong>{b.hold_until && dateTime(b.hold_until)}</strong>.
-                  Chưa cần chuyển tiền.
+                  Chưa cần thanh toán cọc.
                 </p>
                 {owner && (
                   <div className="actions">
@@ -575,148 +575,57 @@ export function BookingDetail() {
             )}
             {status === "AWAITING_DEPOSIT" && (
               <>
-                <h2>Chuyển khoản cọc {money(b.deposit)}</h2>
-                <p>
-                  Vui lòng chuyển trước{" "}
-                  <strong>{b.hold_until && dateTime(b.hold_until)}</strong>.
-                  Không chuyển sau thời hạn này.
-                </p>
-                {customer && (
-                  <div className="payos-checkout">
-                    <button
-                      className="btn"
-                      disabled={creatingPaymentLink}
-                      onClick={() => void createPayOSLink()}
-                    >
-                      {creatingPaymentLink
-                        ? "Đang tạo liên kết thanh toán…"
-                        : "Thanh toán cọc qua payOS"}
-                    </button>
-                    {payosLink && (
-                      <div>
-                        <a
-                          href={payosLink.checkoutUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Mở trang thanh toán payOS
-                        </a>
-                        <p>
-                          {Date.parse(payosLink.expiresAt) > now
-                            ? `Liên kết hết hạn sau ${Math.floor((Date.parse(payosLink.expiresAt) - now) / 60000)} phút.`
-                            : "Liên kết đã hết hạn. Tạo liên kết mới hoặc dùng VietQR bên dưới."}
-                        </p>
+                {customer ? (
+                  <>
+                    <h2>Tiền cọc {money(b.deposit)}</h2>
+                    <p>Thanh toán trước <strong>{b.hold_until && dateTime(b.hold_until)}</strong>.</p>
+                    {payosError && (
+                      <div role="alert" className="alert">
+                        <p>Cổng thanh toán đang tạm thời không khả dụng. Vui lòng thử lại sau hoặc liên hệ hỗ trợ.</p>
+                        <button className="btn" disabled={creatingPaymentLink} onClick={() => void createPayOSLink()}>Thử lại</button>{" "}
+                        {settings?.support_url?.startsWith("https://") ? <a className="btn ghost" href={settings.support_url} target="_blank" rel="noreferrer">Liên hệ hỗ trợ</a> : <button className="btn ghost" onClick={() => setModal("SUPPORT")}>Liên hệ hỗ trợ</button>}
                       </div>
                     )}
-                  </div>
-                )}
-                <div className="vietqr-card">
-                  <div className="vietqr-qr-wrap">
-                    <img
-                      src={buildVietQrUrl({
-                        bankName: b.snapshot.bank_name,
-                        accountNo: b.snapshot.bank_account,
-                        accountHolder: b.snapshot.bank_holder,
-                        amount: b.deposit,
-                        memo: paymentReference(b.id),
-                      })}
-                      alt="VietQR Chuyển khoản cọc"
-                      className="vietqr-img"
-                      loading="lazy"
-                    />
-                    <small className="vietqr-tip">
-                      Mở app ngân hàng bất kỳ để quét mã QR có sẵn số tiền và nội dung.
-                    </small>
-                  </div>
-                  <dl className="bank-info">
-                    <dt>Ngân hàng</dt>
-                    <dd>{b.snapshot.bank_name}</dd>
-                    <dt>Số tài khoản</dt>
-                    <dd>
-                      <span className="copyable-value">{b.snapshot.bank_account}</span>
-                      <button
-                        type="button"
-                        className="btn-copy"
-                        title="Sao chép số tài khoản"
-                        onClick={() => {
-                          void navigator.clipboard.writeText(b.snapshot.bank_account);
-                          toast("Đã sao chép số tài khoản!");
-                        }}
-                      >
-                        <Copy size={12} />
-                        Sao chép
+                    <div className="payos-checkout">
+                      <button className="btn" disabled={creatingPaymentLink} onClick={() => void createPayOSLink()}>
+                        {creatingPaymentLink ? "Đang tạo liên kết thanh toán…" : "Thanh toán cọc qua payOS"}
                       </button>
-                    </dd>
-                    <dt>Chủ tài khoản</dt>
-                    <dd>{b.snapshot.bank_holder}</dd>
-                    <dt>Số tiền cọc</dt>
-                    <dd>
-                      <span className="copyable-value">{money(b.deposit)}</span>
-                      <button
-                        type="button"
-                        className="btn-copy"
-                        title="Sao chép số tiền"
-                        onClick={() => {
-                          void navigator.clipboard.writeText(String(b.deposit));
-                          toast("Đã sao chép số tiền!");
-                        }}
-                      >
-                        <Copy size={12} />
-                        Sao chép
-                      </button>
-                    </dd>
-                    <dt>Nội dung chuyển</dt>
-                    <dd className="reference">
-                      <span className="copyable-value">{paymentReference(b.id)}</span>
-                      <button
-                        type="button"
-                        className="btn-copy"
-                        title="Sao chép nội dung chuyển khoản"
-                        onClick={() => {
-                          void navigator.clipboard.writeText(paymentReference(b.id));
-                          toast("Đã sao chép nội dung!");
-                        }}
-                      >
-                        <Copy size={12} />
-                        Sao chép
-                      </button>
-                    </dd>
-                  </dl>
-                </div>
-                {customer && (
-                  <div className="actions">
-                    <button
-                      className="btn"
-                      onClick={() => setModal("REPORT_PAYMENT")}
-                    >
-                      Tôi đã chuyển tiền
-                    </button>
-                    <button
-                      className="btn ghost"
-                      onClick={() => setModal("CANCEL")}
-                    >
-                      Hủy trước khi chuyển
-                    </button>
-                  </div>
+                      {payosLink && (
+                        <div>
+                          <a href={payosLink.checkoutUrl} target="_blank" rel="noreferrer">Mở trang thanh toán payOS</a>
+                          {payosLink.qrCode && (payosLink.qrCode.startsWith("data:image/") || payosLink.qrCode.startsWith("https://")) && <img src={payosLink.qrCode} alt="Mã QR thanh toán payOS" />}
+                          <p>{Date.parse(payosLink.expiresAt) > now ? `Liên kết hết hạn sau ${Math.floor((Date.parse(payosLink.expiresAt) - now) / 60000)} phút.` : "Liên kết đã hết hạn. Vui lòng tạo liên kết mới."}</p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="actions">
+                      <button className="btn ghost" onClick={() => setModal("CANCEL")}>Hủy trước khi thanh toán</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h2>Đang chờ khách thanh toán cọc</h2>
+                    <p>Hạn thanh toán: {b.hold_until && dateTime(b.hold_until)}.</p>
+                  </>
                 )}
               </>
             )}
             {status === "PAYMENT_REVIEW" && (
               <>
-                <h2>Đã nhận thông báo chuyển tiền</h2>
+                <h2>Giao dịch cọc đang được kiểm tra</h2>
                 <p>
                   Lịch đang được giữ trong thời gian đối soát. Bạn không cần
                   chuyển thêm. Kiểm tra cập nhật tại đây hoặc liên hệ hỗ trợ nếu
                   cần.
                 </p>
-                <p>Mã tham chiếu khách cung cấp: {b.transfer_reference}</p>
+                {admin && <p>Mã tham chiếu: {b.transfer_reference}</p>}
                 {admin && (
                   <div className="actions">
                     <button
                       className="btn"
                       onClick={() => setModal("VERIFY_PAYMENT")}
                     >
-                      Xác nhận tiền thực nhận
+                      Xác minh giao dịch
                     </button>
                     <button
                       className="btn ghost"
@@ -730,6 +639,7 @@ export function BookingDetail() {
             )}
             {status === "CONFIRMED" && (
               <>
+                <p className="success">Đã nhận cọc.</p>
                 <h2>Hẹn gặp lúc {dateTime(b.starts_at)}</h2>
                 <p>
                   <MapPin size={15} />
@@ -778,7 +688,7 @@ export function BookingDetail() {
               <>
                 <h2>Chọn một thời gian hoặc creator khác</h2>
                 <p>
-                  Nếu bạn đã chuyển tiền, hãy gửi yêu cầu hỗ trợ để được đối
+                  Nếu bạn đã thanh toán cọc, hãy gửi yêu cầu hỗ trợ để được kiểm tra
                   soát. Không chuyển thêm tiền cho booking này.
                 </p>
                 <Link className="btn ghost" to="/explore">
@@ -865,7 +775,7 @@ export function BookingDetail() {
               {events.map((ev) => (
                 <li key={ev.id}>
                   <strong>{labels[ev.action] || ev.action}</strong>
-                  <p>{ev.detail}</p>
+                  {customer && <p>{ev.detail}</p>}
                   <small>{dateTime(ev.created_at)}</small>
                 </li>
               ))}
@@ -875,20 +785,16 @@ export function BookingDetail() {
         <aside>
           <section className="panel">
             <span className="eyebrow">THANH TOÁN</span>
-            <h2>{money(b.price)}</h2>
-            <div className="money-line">
-              <span>Tiền cọc 30%</span>
-              <strong>{money(b.deposit)}</strong>
-            </div>
-            <div className="money-line">
-              <span>Phần còn lại của gói</span>
-              <strong>{money(b.price - b.deposit)}</strong>
-            </div>
-            <Badge status={b.payment_status} />
-            <p className="muted">
-              Phần còn lại thanh toán theo thỏa thuận với creator. BeautyHub
-              đang theo dõi tiền cọc.
-            </p>
+            {customer ? (
+              <>
+                <h2>{money(b.price)}</h2>
+                <div className="money-line"><span>Tiền cọc 30%</span><strong>{money(b.deposit)}</strong></div>
+                <div className="money-line"><span>Phần còn lại của gói</span><strong>{money(b.price - b.deposit)}</strong></div>
+                <p className="muted">Phần còn lại thanh toán theo thỏa thuận với creator. BeautyHub đang theo dõi tiền cọc.</p>
+              </>
+            ) : (
+              <p className="muted">Khách thanh toán cọc qua payOS. Trạng thái: <Badge status={b.payment_status} /></p>
+            )}
           </section>
           <section className="panel">
             <h2>Cần hỗ trợ?</h2>
@@ -932,7 +838,7 @@ export function BookingDetail() {
               : modal === "REVIEW"
                 ? "Buổi hẹn của bạn thế nào?"
                 : modal === "CANCEL"
-                  ? "Hủy yêu cầu chưa thanh toán?"
+                  ? "Hủy yêu cầu đặt lịch?"
                   : modal === "COMPLETE"
                     ? "Dịch vụ đã hoàn thành?"
                     : "Xác nhận thông tin"
@@ -952,7 +858,6 @@ export function BookingDetail() {
               if (
                 [
                   "REJECT",
-                  "REPORT_PAYMENT",
                   "VERIFY_PAYMENT",
                   "PAYMENT_NOT_FOUND",
                 ].includes(modal)
@@ -1026,7 +931,7 @@ export function BookingDetail() {
             {!["CANCEL", "COMPLETE"].includes(modal) && (
               <Field
                 label={
-                  ["REPORT_PAYMENT", "VERIFY_PAYMENT", "REFUND"].includes(modal)
+                  ["VERIFY_PAYMENT", "REFUND"].includes(modal)
                     ? "Mã giao dịch / thời điểm / thông tin đối soát"
                     : "Nội dung cụ thể"
                 }
@@ -1045,15 +950,9 @@ export function BookingDetail() {
                 />
               </Field>
             )}
-            {modal === "REPORT_PAYMENT" && (
-              <p>
-                Chỉ báo sau khi đã chuyển đúng {money(b.deposit)}. BeautyHub sẽ
-                kiểm tra tiền thực nhận trước khi xác nhận lịch.
-              </p>
-            )}
             {modal === "CANCEL" && (
               <p>
-                Chỉ hủy trực tiếp nếu bạn chưa chuyển tiền. Nếu đã chuyển, đóng
+                Chỉ hủy trực tiếp khi chưa thanh toán cọc. Nếu đã thanh toán, đóng
                 cửa sổ này và chọn hỗ trợ để đối soát.
               </p>
             )}

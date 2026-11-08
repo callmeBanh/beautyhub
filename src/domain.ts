@@ -64,7 +64,7 @@ export const labels: Record<string, string> = {
   REJECTED: "Creator từ chối",
   EXPIRED: "Hết hạn giữ lịch",
   UNPAID: "Chưa nhận cọc",
-  REPORTED: "Khách đã báo chuyển tiền",
+  REPORTED: "Giao dịch cần kiểm tra",
   PAID: "Đã nhận cọc",
   REFUND_PENDING: "Chờ hoàn tiền",
   REFUNDED: "Đã hoàn tiền",
@@ -73,7 +73,7 @@ export const labels: Record<string, string> = {
   APPROVED: "Đã xác minh",
   SUSPENDED: "Tạm ngừng",
   ACCEPT: "Creator đã nhận lịch",
-  REPORT_PAYMENT: "Đã báo chuyển tiền",
+  REPORT_PAYMENT: "Cần kiểm tra giao dịch",
   VERIFY_PAYMENT: "Đã đối soát tiền cọc",
   PAYMENT_NOT_FOUND: "Chưa tìm thấy giao dịch",
   CANCEL: "Đã hủy yêu cầu",
@@ -491,7 +491,7 @@ export const TESTIMONIALS: Testimonial[] = [
     rating: 5,
     service: "Ảnh Profile Doanh nghiệp",
     creatorName: "Minh Anh Photography",
-    text: "Ekip làm việc cực kỳ đúng giờ và chuyên nghiệp. Ảnh profile chụp xong dùng cho cả LinkedIn lẫn slide pitch deck đối tác đều rất ưng ý. Quy trình cọc qua VietQR minh bạch, an toàn.",
+    text: "Ekip làm việc cực kỳ đúng giờ và chuyên nghiệp. Ảnh profile chụp xong dùng cho cả LinkedIn lẫn slide pitch deck đối tác đều rất ưng ý. Quy trình thanh toán cọc qua payOS minh bạch, an toàn.",
   },
 ];
 
@@ -503,7 +503,7 @@ export type FaqItem = {
 export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "Tôi có cần thanh toán 100% tiền trước khi gặp Creator không?",
-    answer: "Không. Bạn chỉ cần đặt cọc 30% giá trị gói qua mã VietQR an toàn trên hệ thống để xác nhận giữ lịch độc quyền với Creator. Số tiền 70% còn lại bạn sẽ thanh toán trực tiếp cho Creator sau khi hoàn thành buổi chụp/trang điểm.",
+    answer: "Không. Bạn chỉ cần đặt cọc 30% giá trị gói qua payOS trên hệ thống để xác nhận giữ lịch độc quyền với Creator. Số tiền 70% còn lại bạn sẽ thanh toán trực tiếp cho Creator sau khi hoàn thành buổi chụp/trang điểm.",
   },
   {
     question: "Nếu tôi bận đột xuất, chính sách hủy hoặc đổi lịch như thế nào?",

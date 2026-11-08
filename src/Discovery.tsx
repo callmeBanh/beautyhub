@@ -151,7 +151,7 @@ export function Home() {
           <p>
             Nền tảng tuyển chọn Photographer & Makeup Artist chuyên nghiệp tại TP.HCM.
             <br />
-            Tác phẩm thật, giá niêm yết rõ ràng, an tâm đặt cọc qua VietQR.
+            Tác phẩm thật, giá niêm yết rõ ràng, an tâm đặt cọc qua payOS.
           </p>
           <SearchBar />
         </div>
@@ -345,7 +345,7 @@ export function Home() {
             </div>
             <h3>Bảo chứng Cọc An Toàn</h3>
             <p>
-              Chỉ chuyển cọc 30% qua VietQR sau khi Creator nhận lịch. Hoàn 100%
+              Chỉ thanh toán cọc 30% qua payOS sau khi Creator nhận lịch. Hoàn 100%
               tiền cọc nếu Creator hủy hẹn hoặc không đến đúng giờ.
             </p>
           </div>
@@ -1247,7 +1247,7 @@ export function Creator() {
               {/* Deposit Breakdown */}
               <div className="deposit-breakdown">
                 <div className="breakdown-row">
-                  <span>Đặt cọc giữ lịch (30% VietQR):</span>
+                  <span>Đặt cọc giữ lịch (30% qua payOS):</span>
                   <strong>{money(depositAmount)}</strong>
                 </div>
                 <div className="breakdown-row muted">
@@ -1341,7 +1341,7 @@ export function Creator() {
               <div className="booking-assurances">
                 <CheckLine>Creator xác nhận trước khi bạn thanh toán cọc.</CheckLine>
                 <CheckLine>Bảo chứng hoàn 100% tiền cọc nếu có sự cố.</CheckLine>
-                <CheckLine>Mã VietQR tự động, đối soát an toàn.</CheckLine>
+                <CheckLine>Thanh toán qua payOS, trạng thái tự động cập nhật.</CheckLine>
               </div>
 
               <Link className="text-button" to="/policies">
