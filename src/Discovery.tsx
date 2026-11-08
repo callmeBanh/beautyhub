@@ -554,7 +554,7 @@ export function Explore() {
       <div className="page-heading">
         <div>
           <span className="eyebrow">TÌM NGƯỜI ĐỒNG HÀNH HOÀN HẢO</span>
-          <h1>Hợp gu. Hợp lịch. Đúng ngân sách.</h1>
+          <h1>Hợp gu. Hợp lịch. Hợp ngân sách.</h1>
           <p className="muted">
             Lọc theo dịch vụ, khu vực và phong cách nghệ thuật yêu thích của bạn.
           </p>
