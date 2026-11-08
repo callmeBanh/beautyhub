@@ -336,7 +336,7 @@ export function Studio() {
                   <div className="inline-meta">
                     <strong>{money(p.price)}</strong>
                     <span>{formatDuration(p.duration)}</span>
-                    <span>Giao trong {p.delivery_days} ngày</span>
+                    <span>Giao trong {p.delivery_days} ngày làm việc</span>
                   </div>
                   <button className="btn ghost" onClick={() => setEdit(p)}>
                     Chỉnh sửa
@@ -670,7 +670,7 @@ export function Studio() {
                     }
                   />
                 </Field>
-                <Field label="Ngày giao sản phẩm">
+                <Field label="Thời gian giao sản phẩm (tính theo ngày làm việc)">
                   <input
                     type="number"
                     name="days"

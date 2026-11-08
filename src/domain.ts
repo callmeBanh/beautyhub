@@ -471,7 +471,7 @@ export const TESTIMONIALS: Testimonial[] = [
     rating: 5,
     service: "Chân dung ngoại cảnh",
     creatorName: "Minh Anh Photography",
-    text: "Buổi chụp với anh Minh Anh là trải nghiệm thoải mái nhất mình từng có! Anh hướng dẫn tạo dáng rất tỉ mỉ cho người ngại ống kính. Ảnh trả về màu da trong veo, giao đúng hẹn chỉ sau 3 ngày.",
+    text: "Buổi chụp với anh Minh Anh là trải nghiệm thoải mái nhất mình từng có! Anh hướng dẫn tạo dáng rất tỉ mỉ cho người ngại ống kính. Ảnh trả về màu da trong veo, giao đúng hẹn chỉ sau 3 ngày làm việc.",
   },
   {
     id: "t2",

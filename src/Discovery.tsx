@@ -1100,7 +1100,7 @@ export function Creator() {
                           <Clock size={13} /> {formatDuration(k.duration)}
                         </span>
                         <span>
-                          <Calendar size={13} /> Giao sản phẩm: {k.delivery_days} ngày
+                          <Calendar size={13} /> Giao trong {k.delivery_days} ngày làm việc
                         </span>
                       </div>
                       <PackageFacts pkg={k} category={p.category} />
