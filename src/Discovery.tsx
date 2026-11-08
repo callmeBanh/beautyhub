@@ -20,6 +20,7 @@ import {
   HelpCircle,
   MapPin,
   MessageCircle,
+  RotateCcw,
   Search,
   ShieldAlert,
   ShieldCheck,
@@ -790,60 +791,36 @@ function average(p: Provider) {
 
 function PackageFacts({
   pkg,
-  category,
-  compact = false,
 }: {
   pkg: Package;
-  category: string;
-  compact?: boolean;
 }) {
-  const isPhotographer = category === "Photographer";
   const includedItems = pkg.included_items || [];
   const customerBenefits = pkg.customer_benefits || [];
-  const hasPhotoCounts =
-    isPhotographer &&
-    (pkg.original_photo_count != null ||
-      pkg.edited_photo_count != null ||
-      pkg.revision_count != null);
-
-  if (!hasPhotoCounts && !includedItems.length && !customerBenefits.length) {
+  if (!includedItems.length && !customerBenefits.length) {
     return null;
   }
 
   return (
-    <div className={`package-extra-details${compact ? " compact" : ""}`}>
-      {hasPhotoCounts && (
-        <div className="package-extra-counts">
-          {pkg.original_photo_count != null && (
-            <span>{pkg.original_photo_count} ảnh gốc</span>
-          )}
-          {pkg.edited_photo_count != null && (
-            <span>{pkg.edited_photo_count} ảnh chỉnh sửa</span>
-          )}
-          {pkg.revision_count != null && (
-            <span>{pkg.revision_count} lần chỉnh sửa</span>
-          )}
-        </div>
-      )}
+    <div className="package-extra-details">
       {includedItems.length > 0 && (
-        <div>
+        <section>
           <strong>Gói gồm gì</strong>
           <ul>
             {includedItems.map((item, index) => (
               <li key={`${index}-${item}`}>{item}</li>
             ))}
           </ul>
-        </div>
+        </section>
       )}
       {customerBenefits.length > 0 && (
-        <div>
+        <section>
           <strong>Quyền lợi của khách</strong>
           <ul>
             {customerBenefits.map((item, index) => (
               <li key={`${index}-${item}`}>{item}</li>
             ))}
           </ul>
-        </div>
+        </section>
       )}
     </div>
   );
@@ -919,6 +896,19 @@ export function Creator() {
 
   const depositAmount = pkg ? Math.ceil(pkg.price * 0.3) : 0;
   const remainingAmount = pkg ? pkg.price - depositAmount : 0;
+  const showPackageDetails = (packageId: string) => {
+    setActiveTab("packages");
+    window.setTimeout(() => {
+      document
+        .getElementById(`creator-package-${packageId}`)
+        ?.scrollIntoView({
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            ? "auto"
+            : "smooth",
+          block: "center",
+        });
+    }, 0);
+  };
 
   return (
     <div className="page">
@@ -1072,27 +1062,27 @@ export function Creator() {
                 {p.packages
                   .filter((k) => k.active)
                   .map((k) => (
-                    <div
-                      className={`package-card ${pkg?.id === k.id ? "selected" : ""}`}
+                    <article
+                      id={`creator-package-${k.id}`}
+                      className={`package-card creator-package-card ${pkg?.id === k.id ? "selected" : ""}`}
                       key={k.id}
-                      onClick={() => {
-                        setSelected(k.id);
-                        void track("package_view", {
-                          service_type: p.category,
-                        });
-                      }}
                     >
-                      <div className="package-top">
-                        <span className="eyebrow">
-                          {serviceLabel(k.service)}
-                        </span>
-                        {pkg?.id === k.id && (
-                          <span className="selected-badge">Đang chọn</span>
-                        )}
-                      </div>
                       <div className="package-title-row">
-                        <h3>{k.name}</h3>
-                        <div className="package-price">{money(k.price)}</div>
+                        <div className="creator-package-heading">
+                          <div className="creator-package-labels">
+                            <span className="eyebrow package-service-label">
+                              {serviceLabel(k.service)}
+                            </span>
+                            {pkg?.id === k.id && (
+                              <span className="selected-badge">Đang chọn</span>
+                            )}
+                          </div>
+                          <h3>{k.name}</h3>
+                        </div>
+                        <div className="creator-package-price">
+                          <span>{money(k.price)}</span>
+                          <small>/ buổi</small>
+                        </div>
                       </div>
                       <p className="package-desc">{k.description}</p>
                       <div className="package-meta-chips">
@@ -1100,35 +1090,68 @@ export function Creator() {
                           <Clock size={13} /> {formatDuration(k.duration)}
                         </span>
                         <span>
-                          <Calendar size={13} /> Giao trong {k.delivery_days} ngày làm việc
+                          <Calendar size={13} /> Giao trong {k.delivery_days}{" "}
+                          ngày làm việc
                         </span>
-                      </div>
-                      <PackageFacts pkg={k} category={p.category} />
-                      <div className="package-details-box">
-                        <div className="detail-line">
-                          <strong>Bao gồm:</strong>
-                          <span>{k.includes || "Theo mô tả chi tiết gói"}</span>
-                        </div>
-                        <div className="detail-line">
-                          <strong>Không bao gồm:</strong>
+                        {k.original_photo_count != null && (
                           <span>
-                            {k.exclusions || "Không có phụ phí ngoài danh mục"}
+                            <Camera size={13} /> {k.original_photo_count} ảnh gốc
                           </span>
-                        </div>
+                        )}
+                        {k.edited_photo_count != null && (
+                          <span>
+                            <Sparkles size={13} /> {k.edited_photo_count} ảnh chỉnh sửa
+                          </span>
+                        )}
+                        {k.revision_count != null && (
+                          <span>
+                            <RotateCcw size={13} /> {k.revision_count} lần chỉnh sửa
+                          </span>
+                        )}
                       </div>
-                      <button
-                        className={`btn full ${pkg?.id === k.id ? "" : "ghost"}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelected(k.id);
-                          void track("package_view", {
-                            service_type: p.category,
-                          });
-                        }}
-                      >
-                        {pkg?.id === k.id ? "Đã chọn gói này" : "Chọn gói này"}
-                      </button>
-                    </div>
+                      {(Boolean(k.included_items?.length) ||
+                        Boolean(k.customer_benefits?.length) ||
+                        Boolean(k.includes?.trim()) ||
+                        Boolean(k.exclusions?.trim())) && (
+                        <details className="creator-package-details">
+                          <summary>Xem chi tiết gói</summary>
+                          <div className="creator-package-details-grid">
+                            <PackageFacts pkg={k} />
+                            {(k.includes?.trim() || k.exclusions?.trim()) && (
+                              <div className="package-details-box">
+                                {k.includes?.trim() && (
+                                  <div className="detail-line">
+                                    <strong>Bao gồm:</strong>
+                                    <span>{k.includes}</span>
+                                  </div>
+                                )}
+                                {k.exclusions?.trim() && (
+                                  <div className="detail-line">
+                                    <strong>Không bao gồm / phụ phí:</strong>
+                                    <span>{k.exclusions}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </details>
+                      )}
+                      <div className="creator-package-actions">
+                        <button
+                          className={`btn ${pkg?.id === k.id ? "" : "ghost"}`}
+                          type="button"
+                          aria-pressed={pkg?.id === k.id}
+                          onClick={() => {
+                            setSelected(k.id);
+                            void track("package_view", {
+                              service_type: p.category,
+                            });
+                          }}
+                        >
+                          {pkg?.id === k.id ? "Đã chọn gói này" : "Chọn gói này"}
+                        </button>
+                      </div>
+                    </article>
                   ))}
               </div>
             </section>
@@ -1233,7 +1256,45 @@ export function Creator() {
                 </div>
               </div>
 
-              <PackageFacts pkg={pkg} category={p.category} compact />
+              <div className="booking-package-summary">
+                <div className="package-meta-chips">
+                  <span>
+                    <Clock size={13} /> {formatDuration(pkg.duration)}
+                  </span>
+                  <span>
+                    <Calendar size={13} /> {pkg.delivery_days} ngày làm việc
+                  </span>
+                  {pkg.original_photo_count != null && (
+                    <span>
+                      <Camera size={13} /> {pkg.original_photo_count} ảnh gốc
+                    </span>
+                  )}
+                  {pkg.edited_photo_count != null && (
+                    <span>
+                      <Sparkles size={13} /> {pkg.edited_photo_count} ảnh chỉnh sửa
+                    </span>
+                  )}
+                  {pkg.revision_count != null && (
+                    <span>
+                      <RotateCcw size={13} /> {pkg.revision_count} lần chỉnh sửa
+                    </span>
+                  )}
+                </div>
+                {pkg.included_items?.length ? (
+                  <ul>
+                    {pkg.included_items.slice(0, 2).map((item, index) => (
+                      <li key={`${index}-${item}`}>{item}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                <button
+                  className="text-button"
+                  type="button"
+                  onClick={() => showPackageDetails(pkg.id)}
+                >
+                  Xem chi tiết
+                </button>
+              </div>
 
               <Field label="1. Chọn ngày bạn muốn">
                 <input
