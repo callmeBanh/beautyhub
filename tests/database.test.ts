@@ -6,6 +6,9 @@ import { btree_gist } from "@electric-sql/pglite/contrib/btree_gist";
 let db: PGlite;
 const customer = "11111111-1111-4111-8111-111111111111",
   other = "22222222-2222-4222-8222-222222222222",
+  depositCustomerOne = "55555555-5555-4555-8555-555555555555",
+  depositCustomerTwo = "66666666-6666-4666-8666-666666666666",
+  depositCustomerThree = "77777777-7777-4777-8777-777777777777",
   owner = "33333333-3333-4333-8333-333333333333",
   admin = "44444444-4444-4444-8444-444444444444";
 let provider: string, pkg: string, booking: string;
@@ -78,12 +81,18 @@ beforeAll(async () => {
   await db.exec(
     readFileSync("supabase/migrations/202611100001_direct_deposits.sql", "utf8"),
   );
-  await db.query("insert into auth.users(id) values ($1),($2),($3),($4)", [
-    customer,
-    other,
-    owner,
-    admin,
-  ]);
+  await db.query(
+    "insert into auth.users(id) values ($1),($2),($3),($4),($5),($6),($7)",
+    [
+      customer,
+      other,
+      owner,
+      admin,
+      depositCustomerOne,
+      depositCustomerTwo,
+      depositCustomerThree,
+    ],
+  );
   await db.query("update public.profiles set role='ADMIN' where id=$1", [
     admin,
   ]);
@@ -232,6 +241,11 @@ describe("PostgreSQL booking and authorization", () => {
     expect(b.payment_status).toBe("UNPAID");
   });
   it("customers cannot read payout rows or get payee data before deposit is due", async () => {
+    await db.exec("reset role");
+    await call(
+      "update public.bookings set status='REQUESTED',payment_status='UNPAID',hold_until=now()+interval '6 hours' where id=$1",
+      [booking],
+    );
     await as(customer);
     expect(await call("select * from public.provider_payout_accounts")).toHaveLength(0);
     await expect(
@@ -284,9 +298,12 @@ describe("PostgreSQL booking and authorization", () => {
     ).rejects.toThrow(/không có quyền/);
   });
   it("creator can confirm a reported transfer and not-received requires a reason", async () => {
-    await as(customer);
-    const id = await createAwaiting(`${day}T12:00:00+07:00`);
-    await as(customer);
+    await as(depositCustomerOne);
+    const id = await createAwaiting(
+      `${day}T12:00:00+07:00`,
+      depositCustomerOne,
+    );
+    await as(depositCustomerOne);
     await call(
       "select public.booking_action($1,'REPORT_PAYMENT','', 'TX123456')",
       [id],
@@ -317,10 +334,13 @@ describe("PostgreSQL booking and authorization", () => {
     ).rejects.toThrow(/Thao tác/);
   });
   it("creator can return a reported transfer to awaiting deposit with a reason", async () => {
-    await as(customer);
-    const nextDay = await addPayOSAvailability(1);
-    const id = await createAwaiting(`${nextDay}T09:00:00+07:00`);
-    await as(customer);
+    await as(depositCustomerTwo);
+    const nextDay = await addPayOSAvailability(4);
+    const id = await createAwaiting(
+      `${nextDay}T09:00:00+07:00`,
+      depositCustomerTwo,
+    );
+    await as(depositCustomerTwo);
     await call("select public.booking_action($1,'REPORT_PAYMENT','')", [id]);
     await as(owner);
     await call(
@@ -344,10 +364,13 @@ describe("PostgreSQL booking and authorization", () => {
     ).rejects.toThrow(/tối đa 200/);
   });
   it("admin can override a reported transfer", async () => {
-    await as(customer);
-    const nextDay = await addPayOSAvailability(2);
-    const id = await createAwaiting(`${nextDay}T09:00:00+07:00`);
-    await as(customer);
+    await as(depositCustomerThree);
+    const nextDay = await addPayOSAvailability(5);
+    const id = await createAwaiting(
+      `${nextDay}T09:00:00+07:00`,
+      depositCustomerThree,
+    );
+    await as(depositCustomerThree);
     await call("select public.booking_action($1,'REPORT_PAYMENT','')", [id]);
     await as(admin);
     await call("select public.booking_action($1,'VERIFY_PAYMENT','')", [id]);
