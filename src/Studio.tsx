@@ -30,6 +30,7 @@ import {
   formatDuration,
   localDate,
   money,
+  validatePayoutAccount,
   SERVICES,
   serviceLabel,
   STYLES,
@@ -37,7 +38,9 @@ import {
   type Booking,
   type Package,
   type PackageDetailsInput,
+  type PayoutAccount,
 } from "./domain";
+import { buildVietQrUrl, VIETQR_BANKS } from "./vietqr";
 import {
   Alert,
   Badge,
@@ -120,6 +123,110 @@ function packageLines(value: string) {
     .map((item) => item.trim())
     .filter(Boolean);
   return items.length ? items : null;
+}
+function PayoutAccountEditor({
+  providerId,
+  account,
+  busy,
+  onSave,
+}: {
+  providerId: string;
+  account: PayoutAccount | null;
+  busy: boolean;
+  onSave: (value: Omit<PayoutAccount, "updated_at">) => Promise<void>;
+}) {
+  const [bankBin, setBankBin] = useState(account?.bank_bin || "");
+  const [accountNumber, setAccountNumber] = useState(
+    account?.account_number || "",
+  );
+  const [accountName, setAccountName] = useState(account?.account_name || "");
+  const [error, setError] = useState("");
+  const bank = VIETQR_BANKS.find((item) => item.bin === bankBin);
+  const data = {
+    bank_bin: bankBin,
+    bank_name: bank?.shortName || "",
+    account_number: accountNumber.trim(),
+    account_name: accountName.trim(),
+  };
+  const validation = validatePayoutAccount(data);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (validation) {
+      setError(validation);
+      return;
+    }
+    try {
+      setError("");
+      await onSave({ provider_id: providerId, ...data });
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+  return (
+    <section className="panel">
+      <h2>Thông tin nhận cọc trực tiếp</h2>
+      <p className="muted">
+        Khách chuyển tiền trực tiếp cho bạn qua VietQR. BeautyHub không nhận hay
+        giữ tiền cọc.
+      </p>
+      {error && <Alert>{error}</Alert>}
+      <form className="form-grid" onSubmit={(event) => void submit(event)}>
+        <Field label="Ngân hàng">
+          <select
+            required
+            value={bankBin}
+            onChange={(event) => setBankBin(event.target.value)}
+          >
+            <option value="">Chọn ngân hàng</option>
+            {VIETQR_BANKS.map((item) => (
+              <option key={item.bin} value={item.bin}>
+                {item.shortName}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Số tài khoản" hint="Từ 6 đến 19 chữ số.">
+          <input
+            required
+            inputMode="numeric"
+            pattern="[0-9]{6,19}"
+            maxLength={19}
+            value={accountNumber}
+            onChange={(event) => setAccountNumber(event.target.value)}
+          />
+        </Field>
+        <Field label="Tên chủ tài khoản" hint="IN HOA, không dấu, tối đa 50 ký tự.">
+          <input
+            required
+            maxLength={50}
+            pattern="[A-Z0-9 ]{1,50}"
+            value={accountName}
+            onChange={(event) => setAccountName(event.target.value)}
+          />
+        </Field>
+        <button className="btn" disabled={busy || Boolean(validation)}>
+          {busy ? "Đang lưu…" : "Lưu thông tin nhận cọc"}
+        </button>
+      </form>
+      {!validation && (
+        <div className="deposit-qr-preview">
+          <h3>Xem trước QR thử · 300.000đ · mã BH TEST</h3>
+          <img
+            src={buildVietQrUrl({
+              bankBin,
+              accountNo: accountNumber,
+              accountHolder: accountName,
+              amount: 300000,
+              memo: "BH TEST",
+            })}
+            alt="QR chuyển khoản thử nghiệm"
+            width={240}
+            height={240}
+          />
+        </div>
+      )}
+    </section>
+  );
 }
 function parsePackagePrice(value: string) {
   const trimmed = value.trim();
@@ -587,6 +694,7 @@ export function Studio() {
   const own = providers.find((p) => p.owner_id === user!.id);
   const [tab, setTab] = useState(own ? "overview" : "profile"),
     [bookings, setBookings] = useState<Booking[]>([]),
+    [payoutAccount, setPayoutAccount] = useState<PayoutAccount | null>(null),
     [hours, setHours] = useState<
       { id: string; starts_at: string; ends_at: string }[]
     >([]),
@@ -595,7 +703,7 @@ export function Studio() {
     [edit, setEdit] = useState<Package | "new" | null>(null);
   async function load() {
     if (!own) return;
-    const [a, b] = await Promise.all([
+    const [a, b, payout] = await Promise.all([
       client()
         .from("bookings")
         .select("*")
@@ -606,13 +714,19 @@ export function Studio() {
         .select("*")
         .eq("provider_id", own.id)
         .order("starts_at"),
+      client()
+        .from("provider_payout_accounts")
+        .select("*")
+        .eq("provider_id", own.id)
+        .maybeSingle(),
     ]);
-    if (a.error || b.error) {
-      setError((a.error || b.error)!.message);
+    if (a.error || b.error || payout.error) {
+      setError((a.error || b.error || payout.error)!.message);
       return;
     }
     setBookings(a.data || []);
     setHours(b.data || []);
+    setPayoutAccount((payout.data as PayoutAccount | null) || null);
   }
   useEffect(() => {
     void load();
@@ -639,6 +753,7 @@ export function Studio() {
   }
   const sections = [
     ["overview", "Tổng quan", LayoutDashboard],
+    ["deposit", "Nhận cọc", DollarSign],
     ["profile", "Hồ sơ creator", Settings],
     ["packages", "Gói dịch vụ", PackageIcon],
     ["portfolio", "Portfolio", Camera],
@@ -713,6 +828,32 @@ export function Studio() {
             Hồ sơ chưa được mở nhận lịch. Hoàn thiện thông tin, ít nhất 3 ảnh
             thật, gói dịch vụ và lịch trống rồi gửi duyệt.
           </div>
+        )}
+        {own && !payoutAccount && (
+          <Alert>
+            Hãy cập nhật thông tin nhận cọc để khách có thể chuyển cọc trực tiếp
+            cho bạn và xác nhận lịch.
+          </Alert>
+        )}
+        {tab === "deposit" && own && (
+          <PayoutAccountEditor
+            key={`${own.id}:${payoutAccount?.updated_at || "new"}`}
+            providerId={own.id}
+            account={payoutAccount}
+            busy={busy}
+            onSave={async (value) => {
+              const saved = await run(
+                async () => {
+                  const { error: saveError } = await client()
+                    .from("provider_payout_accounts")
+                    .upsert(value, { onConflict: "provider_id" });
+                  if (saveError) throw saveError;
+                },
+                "Đã lưu thông tin nhận cọc.",
+              );
+              if (!saved) throw new Error("Không thể lưu thông tin nhận cọc.");
+            }}
+          />
         )}
         {tab === "overview" && (
           <>

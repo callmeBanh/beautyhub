@@ -57,7 +57,7 @@ export const labels: Record<string, string> = {
   REJECT: "Creator đã từ chối có lý do",
   REQUESTED: "Chờ creator phản hồi",
   AWAITING_DEPOSIT: "Chờ đặt cọc",
-  PAYMENT_REVIEW: "Đang kiểm tra giao dịch cọc",
+  PAYMENT_REVIEW: "Chờ creator xác nhận cọc",
   CONFIRMED: "Đã xác nhận",
   COMPLETED: "Đã hoàn thành",
   CANCELLED: "Đã hủy",
@@ -73,8 +73,9 @@ export const labels: Record<string, string> = {
   APPROVED: "Đã xác minh",
   SUSPENDED: "Tạm ngừng",
   ACCEPT: "Creator đã nhận lịch",
-  REPORT_PAYMENT: "Giao dịch cọc cần kiểm tra",
-  VERIFY_PAYMENT: "Đã nhận cọc qua payOS",
+  REPORT_PAYMENT: "Khách báo đã chuyển cọc",
+  VERIFY_PAYMENT: "Creator xác nhận đã nhận cọc",
+  PAYMENT_NOT_RECEIVED: "Creator chưa nhận được cọc",
   PAYMENT_NOT_FOUND: "Chưa tìm thấy giao dịch",
   CANCEL: "Đã hủy yêu cầu",
   COMPLETE: "Dịch vụ đã hoàn thành",
@@ -216,6 +217,7 @@ export type Booking = {
   created_at: string;
   updated_at: string;
   transfer_reference: string | null;
+  transfer_note: string | null;
   refund_amount: number | null;
   snapshot: {
     provider_name: string;
@@ -225,7 +227,31 @@ export type Booking = {
     bank_name: string;
     bank_account: string;
     bank_holder: string;
+    deposit_ready?: boolean;
   };
+  export type PayoutAccount = {
+    provider_id: string;
+    bank_bin: string;
+    bank_name: string;
+    account_number: string;
+    account_name: string;
+    updated_at: string;
+  };
+  export function validatePayoutAccount(input: {
+    bank_bin: string;
+    bank_name: string;
+    account_number: string;
+    account_name: string;
+  }) {
+    if (!/^\d{6}$/.test(input.bank_bin)) return "Chọn ngân hàng hợp lệ.";
+    if (!input.bank_name.trim() || input.bank_name.length > 100)
+      return "Tên ngân hàng không hợp lệ.";
+    if (!/^\d{6,19}$/.test(input.account_number))
+      return "Số tài khoản phải có từ 6 đến 19 chữ số.";
+    if (!/^[A-Z0-9 ]{1,50}$/.test(input.account_name.trim()))
+      return "Tên chủ tài khoản cần viết IN HOA, không dấu, tối đa 50 ký tự.";
+    return "";
+  }
 };
 export type BookingEvent = {
   id: string;
@@ -516,7 +542,7 @@ export const TESTIMONIALS: Testimonial[] = [
     rating: 5,
     service: "Ảnh Profile Doanh nghiệp",
     creatorName: "Minh Anh Photography",
-    text: "Ekip làm việc cực kỳ đúng giờ và chuyên nghiệp. Ảnh profile chụp xong dùng cho cả LinkedIn lẫn slide pitch deck đối tác đều rất ưng ý. Quy trình thanh toán cọc qua payOS minh bạch, an toàn.",
+    text: "Ekip làm việc cực kỳ đúng giờ và chuyên nghiệp. Ảnh profile chụp xong dùng cho cả LinkedIn lẫn slide pitch deck đối tác đều rất ưng ý.",
   },
 ];
 
@@ -528,11 +554,11 @@ export type FaqItem = {
 export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "Tôi có cần thanh toán 100% tiền trước khi gặp Creator không?",
-    answer: "Không. Bạn chỉ cần đặt cọc 30% giá trị gói qua payOS trên hệ thống để xác nhận giữ lịch độc quyền với Creator. Số tiền 70% còn lại bạn sẽ thanh toán trực tiếp cho Creator sau khi hoàn thành buổi chụp/trang điểm.",
+    answer: "Không. Sau khi creator nhận lịch, bạn chuyển cọc 30% trực tiếp cho creator qua VietQR; BeautyHub không nhận hay giữ tiền cọc. Phần còn lại thanh toán theo thỏa thuận với creator sau buổi chụp/trang điểm.",
   },
   {
     question: "Nếu tôi bận đột xuất, chính sách hủy hoặc đổi lịch như thế nào?",
-    answer: "BeautyHub có chính sách hoàn hủy cực kỳ minh bạch: Thông báo trước 48 giờ: Hoàn lại 100% tiền cọc hoặc bảo lưu lịch trong 30 ngày. Thông báo trước 24h - 48h: Hoàn lại 50% tiền cọc. Mọi yêu cầu được gửi trực tiếp tại mục Hỗ trợ của lịch hẹn và xử lý đối soát trong 1-2 ngày làm việc.",
+    answer: "Hoàn cọc theo chính sách công bố giữa khách và creator; BeautyHub hỗ trợ hòa giải. Gửi yêu cầu hỗ trợ trong booking nếu cần trao đổi với admin.",
   },
   {
     question: "Bao lâu sau buổi chụp tôi sẽ nhận được ảnh hoàn thiện?",

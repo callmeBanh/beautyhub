@@ -29,6 +29,7 @@ import {
   type Booking,
   type BookingEvent,
   type Review,
+  type PayoutAccount,
   type Support,
 } from "./domain";
 import {
@@ -42,6 +43,7 @@ import {
   Modal,
   useClock,
 } from "./ui";
+import { buildVietQrUrl } from "./vietqr";
 type Draft = {
   name: string;
   phone: string;
@@ -390,27 +392,20 @@ export function BookingCard({ b }: { b: Booking }) {
 }
 export function BookingDetail() {
   const { id } = useParams();
-  const [params] = useSearchParams();
-  const payOSCancelled = params.get("cancel") === "true";
-  const payOSReturn =
-    payOSCancelled || params.has("code") || params.has("orderCode");
   const { user, profile, providers, settings, toast } = useApp();
   const [b, setB] = useState<Booking | null>(null),
     [events, setEvents] = useState<BookingEvent[]>([]),
     [tickets, setTickets] = useState<Support[]>([]),
     [review, setReview] = useState<Review | null>(null),
     [contact, setContact] = useState(""),
+    [depositPayee, setDepositPayee] = useState<
+      Pick<PayoutAccount, "bank_bin" | "bank_name" | "account_number" | "account_name"> | null
+    >(null),
+    [transferNote, setTransferNote] = useState(""),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [modal, setModal] = useState(""),
-    [busy, setBusy] = useState(false),
-    [creatingPaymentLink, setCreatingPaymentLink] = useState(false),
-    [payosError, setPayosError] = useState(false),
-    [returnTimedOut, setReturnTimedOut] = useState(false),
-    [payosLink, setPayosLink] = useState<{
-      checkoutUrl: string;
-      expiresAt: string;
-    } | null>(null);
+    [busy, setBusy] = useState(false);
   const now = useClock();
   async function load() {
     try {
@@ -422,35 +417,18 @@ export function BookingDetail() {
       if (result.error) throw result.error;
       setB(result.data);
       if (
-        result.data.status === "AWAITING_DEPOSIT" &&
+        ["AWAITING_DEPOSIT", "PAYMENT_REVIEW"].includes(result.data.status) &&
         result.data.customer_id === user?.id
       ) {
-        const linkResult = await client()
-          .from("payment_links")
-          .select("checkout_url,expires_at")
-          .eq("booking_id", id)
-          .eq("status", "PENDING")
-          .gt("expires_at", new Date().toISOString())
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (linkResult.error) {
-          console.warn("Unable to load the pending PayOS link", linkResult.error);
-          setPayosLink(null);
-        } else if (
-          typeof linkResult.data?.checkout_url === "string" &&
-          linkResult.data.checkout_url.startsWith("https://") &&
-          typeof linkResult.data.expires_at === "string"
-        ) {
-          setPayosLink({
-            checkoutUrl: linkResult.data.checkout_url,
-            expiresAt: linkResult.data.expires_at,
-          });
-        } else {
-          setPayosLink(null);
-        }
+        const payee = await rpc<
+          Pick<
+            PayoutAccount,
+            "bank_bin" | "bank_name" | "account_number" | "account_name"
+          >[]
+        >("get_deposit_payee", { p_booking_id: id });
+        setDepositPayee(payee[0] || null);
       } else {
-        setPayosLink(null);
+        setDepositPayee(null);
       }
       const [ev, ts, rv, ct] = await Promise.all([
         client()
@@ -480,36 +458,21 @@ export function BookingDetail() {
   }
   useEffect(() => {
     void load();
-    const isConfirmingPayOS =
-      payOSReturn &&
-      !payOSCancelled &&
-      b?.status !== "CONFIRMED" &&
-      b?.status !== "PAYMENT_REVIEW";
-    const interval = setInterval(
-      () => void load(),
-      isConfirmingPayOS ? 5000 : 30000,
-    );
+    const interval = setInterval(() => void load(), 30000);
     return () => clearInterval(interval);
-  }, [id, user?.id, payOSReturn, payOSCancelled, b?.status]);
-  useEffect(() => {
-    if (
-      !payOSReturn ||
-      payOSCancelled ||
-      b?.status === "CONFIRMED" ||
-      b?.status === "PAYMENT_REVIEW"
-    ) {
-      return;
-    }
-    const timeout = setTimeout(() => setReturnTimedOut(true), 120000);
-    return () => clearTimeout(timeout);
-  }, [payOSReturn, payOSCancelled, b?.status]);
-  async function action(name: string, detail = "") {
+  }, [id, user?.id]);
+  async function action(
+    name: string,
+    detail = "",
+    paymentTransferNote: string | null = null,
+  ) {
     setBusy(true);
     try {
       await rpc("booking_action", {
         p_id: id,
         p_action: name,
         p_detail: detail,
+        p_transfer_note: paymentTransferNote,
       });
       setModal("");
       await load();
@@ -518,34 +481,6 @@ export function BookingDetail() {
       setError(errorText(e));
     } finally {
       setBusy(false);
-    }
-  }
-  async function createPayOSLink() {
-    setCreatingPaymentLink(true);
-    setPayosError(false);
-    try {
-      const { data, error: invokeError } = await client().functions.invoke(
-        "create-payment-link",
-        { body: { bookingId: id } },
-      );
-      if (invokeError) throw invokeError;
-      if (
-        typeof data?.checkoutUrl !== "string" ||
-        !data.checkoutUrl.startsWith("https://") ||
-        typeof data?.expiresAt !== "string"
-      ) {
-        throw new Error("Không nhận được liên kết thanh toán hợp lệ.");
-      }
-      setPayosLink({
-        checkoutUrl: data.checkoutUrl,
-        expiresAt: data.expiresAt,
-      });
-      window.location.assign(data.checkoutUrl);
-    } catch (e) {
-      console.error("Unable to create PayOS checkout link", e);
-      setPayosError(true);
-    } finally {
-      setCreatingPaymentLink(false);
     }
   }
   if (loading) return <Loading />;
@@ -566,8 +501,8 @@ export function BookingDetail() {
   const admin = profile?.role === "ADMIN";
   const title: Record<string, string> = {
     REQUESTED: "Yêu cầu của bạn đã được gửi.",
-    AWAITING_DEPOSIT: "Creator đã nhận lịch. Đến bước đặt cọc.",
-    PAYMENT_REVIEW: "BeautyHub đang kiểm tra tiền cọc.",
+    AWAITING_DEPOSIT: "Creator đã nhận lịch. Đến bước đặt cọc trực tiếp.",
+    PAYMENT_REVIEW: "Creator đang xác nhận đã nhận tiền cọc.",
     CONFIRMED: "Buổi hẹn đã được xác nhận.",
     COMPLETED: "Cảm ơn bạn đã chọn BeautyHub.",
     CANCELLED: "Booking đã được hủy.",
@@ -605,6 +540,18 @@ export function BookingDetail() {
                   <strong>{b.hold_until && dateTime(b.hold_until)}</strong>.
                   Chưa cần thanh toán cọc.
                 </p>
+                {customer && !b.snapshot.deposit_ready && (
+                  <Alert>
+                    Creator đang cập nhật thông tin nhận cọc. Bạn chưa cần
+                    chuyển tiền.
+                  </Alert>
+                )}
+                {owner && !b.snapshot.deposit_ready && (
+                  <Alert>
+                    Cập nhật thông tin nhận cọc trong Studio trước khi nhận
+                    lịch này.
+                  </Alert>
+                )}
                 {owner && (
                   <div className="actions">
                     <button
@@ -637,99 +584,162 @@ export function BookingDetail() {
                 {customer ? (
                   <>
                     <h2>Tiền cọc {money(b.deposit)}</h2>
-                    <p>Thanh toán trước <strong>{b.hold_until && dateTime(b.hold_until)}</strong>.</p>
-                    {payosError && (
-                      <div role="alert" className="alert">
-                        <p>Cổng thanh toán đang tạm thời không khả dụng. Vui lòng thử lại sau hoặc liên hệ hỗ trợ.</p>
-                        <button className="btn" disabled={creatingPaymentLink} onClick={() => void createPayOSLink()}>Thử lại</button>{" "}
-                        {settings?.support_url?.startsWith("https://") ? <a className="btn ghost" href={settings.support_url} target="_blank" rel="noreferrer">Liên hệ hỗ trợ</a> : <button className="btn ghost" onClick={() => setModal("SUPPORT")}>Liên hệ hỗ trợ</button>}
-                      </div>
-                    )}
-                    {payOSCancelled && (
+                    <p>
+                      Hạn chuyển cọc:{" "}
+                      <strong>{b.hold_until && dateTime(b.hold_until)}</strong>.
+                    </p>
+                    <p>
+                      BeautyHub không nhận hay giữ tiền cọc; bạn chuyển trực
+                      tiếp cho creator.
+                    </p>
+                    {depositPayee ? (
+                      <>
+                        <div className="deposit-payee">
+                          <img
+                            src={buildVietQrUrl({
+                              bankBin: depositPayee.bank_bin,
+                              accountNo: depositPayee.account_number,
+                              accountHolder: depositPayee.account_name,
+                              amount: b.deposit,
+                              memo: paymentReference(b.id),
+                            })}
+                            alt={`QR chuyển ${money(b.deposit)} cho creator`}
+                            width={240}
+                            height={240}
+                          />
+                          <div>
+                            <strong>{depositPayee.bank_name}</strong>
+                            <p>Số tài khoản: {depositPayee.account_number}</p>
+                            <p>Chủ tài khoản: {depositPayee.account_name}</p>
+                            <p>Số tiền: {money(b.deposit)}</p>
+                            <p>
+                              Nội dung: <code>{paymentReference(b.id)}</code>
+                            </p>
+                          </div>
+                        </div>
+                        <form
+                          className="form-grid"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            void action(
+                              "REPORT_PAYMENT",
+                              "",
+                              transferNote.trim() || null,
+                            );
+                          }}
+                        >
+                          <Field
+                            label="Mã giao dịch ngân hàng (không bắt buộc)"
+                            hint="Tối đa 60 ký tự."
+                          >
+                            <input
+                              maxLength={60}
+                              value={transferNote}
+                              onChange={(event) =>
+                                setTransferNote(event.target.value)
+                              }
+                            />
+                          </Field>
+                          <button className="btn" disabled={busy}>
+                            Tôi đã chuyển tiền
+                          </button>
+                        </form>
+                      </>
+                    ) : (
                       <Alert>
-                        Bạn đã hủy thanh toán trên payOS. Bạn có thể thử lại khi sẵn sàng.
+                        Creator đang cập nhật thông tin nhận cọc.
                       </Alert>
                     )}
-                    {payOSReturn && !payOSCancelled && !returnTimedOut && (
-                      <Alert>Đang xác nhận thanh toán...</Alert>
-                    )}
-                    {payOSReturn && !payOSCancelled && returnTimedOut && (
-                      <Alert>
-                        Hệ thống đang xác nhận, vui lòng kiểm tra lại sau ít phút.{" "}
-                        <button
-                          className="text-button"
-                          onClick={() => window.location.reload()}
-                        >
-                          Làm mới
-                        </button>
-                      </Alert>
-                    )}
-                    <div className="payos-checkout">
-                      {payosLink && Date.parse(payosLink.expiresAt) > now ? (
-                        <a
-                          className="btn"
-                          href={payosLink.checkoutUrl}
-                          aria-label="Tiếp tục thanh toán trên payOS"
-                        >
-                          {payOSCancelled
-                            ? "Thử lại thanh toán"
-                            : "Tiếp tục thanh toán"}
-                        </a>
-                      ) : (
-                        <button
-                          className="btn"
-                          disabled={creatingPaymentLink}
-                          onClick={() => void createPayOSLink()}
-                        >
-                          {creatingPaymentLink
-                            ? "Đang tạo liên kết thanh toán…"
-                            : payOSCancelled
-                              ? "Thử lại thanh toán"
-                              : "Thanh toán cọc qua payOS"}
-                        </button>
-                      )}
-                      {payosLink && (
-                        <p>
-                          {Date.parse(payosLink.expiresAt) > now
-                            ? `Liên kết hết hạn sau ${Math.max(0, Math.ceil((Date.parse(payosLink.expiresAt) - now) / 60000))} phút.`
-                            : "Liên kết đã hết hạn. Tạo liên kết mới để thanh toán."}
-                        </p>
-                      )}
-                    </div>
                     <div className="actions">
                       <button className="btn ghost" onClick={() => setModal("CANCEL")}>Hủy trước khi thanh toán</button>
                     </div>
                   </>
                 ) : (
                   <>
-                    <h2>Đang chờ khách thanh toán cọc</h2>
-                    <p>Hạn thanh toán: {b.hold_until && dateTime(b.hold_until)}.</p>
+                    <h2>Chờ khách chuyển cọc trực tiếp cho bạn</h2>
+                    <p>Tiền cọc cần nhận: {money(b.deposit)}.</p>
+                    {b.transfer_note && (
+                      <p>Mã giao dịch khách báo: {b.transfer_note}</p>
+                    )}
+                    <p>Hạn: {b.hold_until && dateTime(b.hold_until)}.</p>
+                    {owner && (
+                      <button
+                        className="btn"
+                        disabled={busy}
+                        onClick={() => void action("VERIFY_PAYMENT")}
+                      >
+                        Đã nhận cọc
+                      </button>
+                    )}
                   </>
                 )}
               </>
             )}
             {status === "PAYMENT_REVIEW" && (
               <>
-                <h2>Giao dịch cọc đang được kiểm tra</h2>
-                <p>
-                  Lịch đang được giữ trong khi kiểm tra giao dịch. Bạn không cần
-                  chuyển thêm. Kiểm tra cập nhật tại đây hoặc liên hệ hỗ trợ nếu
-                  cần.
-                </p>
-                {admin && <p>Mã tham chiếu: {b.transfer_reference}</p>}
+                {customer ? (
+                  <>
+                    <h2>Đang chờ creator xác nhận đã nhận cọc</h2>
+                    <p>
+                      BeautyHub không nhận hay giữ tiền cọc; bạn đã chuyển trực
+                      tiếp cho creator.
+                    </p>
+                    {b.transfer_note && (
+                      <p>Mã giao dịch bạn đã báo: {b.transfer_note}</p>
+                    )}
+                    {contact && (
+                      <a className="btn ghost" href={`tel:${contact}`}>
+                        <Phone size={16} /> Liên hệ creator
+                      </a>
+                    )}
+                    <button
+                      className="btn ghost"
+                      onClick={() => setModal("SUPPORT")}
+                    >
+                      Gửi yêu cầu hỗ trợ
+                    </button>
+                  </>
+                ) : owner ? (
+                  <>
+                    <h2>Xác nhận tiền cọc đã vào tài khoản</h2>
+                    <p>Tiền cọc cần nhận: {money(b.deposit)}.</p>
+                    <p>Mã giao dịch khách báo: {b.transfer_note || "Chưa cung cấp"}.</p>
+                    <div className="actions">
+                      <button
+                        className="btn"
+                        disabled={busy}
+                        onClick={() => void action("VERIFY_PAYMENT")}
+                      >
+                        Đã nhận cọc
+                      </button>
+                      <button
+                        className="btn ghost"
+                        onClick={() => setModal("PAYMENT_NOT_RECEIVED")}
+                      >
+                        Chưa nhận được
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h2>Cọc cần hòa giải</h2>
+                    <p>Mã giao dịch khách báo: {b.transfer_note || "Chưa cung cấp"}.</p>
+                  </>
+                )}
                 {admin && (
                   <div className="actions">
                     <button
                       className="btn"
-                      onClick={() => setModal("VERIFY_PAYMENT")}
+                      disabled={busy}
+                      onClick={() => void action("VERIFY_PAYMENT")}
                     >
-                      Xác minh giao dịch
+                      Ghi đè xác nhận
                     </button>
                     <button
-                      className="btn ghost"
-                      onClick={() => setModal("PAYMENT_NOT_FOUND")}
+                      className="btn danger"
+                      onClick={() => setModal("ADMIN_CANCEL")}
                     >
-                      Chưa tìm thấy tiền
+                      Hủy booking
                     </button>
                   </div>
                 )}
@@ -799,8 +809,8 @@ export function BookingDetail() {
               <>
                 <h2>Chọn một thời gian hoặc creator khác</h2>
                 <p>
-                  Nếu bạn đã thanh toán cọc, hãy gửi yêu cầu hỗ trợ để được kiểm tra
-                  soát. Không chuyển thêm tiền cho booking này.
+                  Nếu đã chuyển cọc, liên hệ creator và gửi yêu cầu hỗ trợ để
+                  admin hòa giải. Không chuyển thêm tiền cho booking này.
                 </p>
                 <div className="actions">
                   <Link className="btn ghost" to="/explore">
@@ -811,17 +821,14 @@ export function BookingDetail() {
             )}
             {b.payment_status === "REFUND_PENDING" && (
               <Alert>
-                Đang chờ hoàn {money(b.refund_amount || 0)}.{" "}
-                {admin && (
-                  <button className="btn" onClick={() => setModal("REFUND")}>
-                    Ghi nhận giao dịch hoàn
-                  </button>
-                )}
+                Trạng thái hoàn cọc từ giao dịch payOS cũ; không áp dụng cho
+                chuyển cọc VietQR.
               </Alert>
             )}
             {b.payment_status === "REFUNDED" && (
               <p className="success">
-                Đã hoàn tiền: {money(b.refund_amount || 0)}
+                Giao dịch hoàn cọc cũ đã được ghi nhận:{" "}
+                {money(b.refund_amount || 0)}
               </p>
             )}
           </section>
@@ -916,10 +923,10 @@ export function BookingDetail() {
                 <h2>{money(b.price)}</h2>
                 <div className="money-line"><span>Tiền cọc 30%</span><strong>{money(b.deposit)}</strong></div>
                 <div className="money-line"><span>Phần còn lại của gói</span><strong>{money(b.price - b.deposit)}</strong></div>
-                <p className="muted">Phần còn lại thanh toán theo thỏa thuận với creator. BeautyHub đang theo dõi tiền cọc.</p>
+                <p className="muted">Bạn chuyển cọc trực tiếp cho creator; BeautyHub không nhận hay giữ tiền cọc.</p>
               </>
             ) : (
-              <p className="muted">Khách thanh toán cọc qua payOS. Trạng thái: <Badge status={b.payment_status} /></p>
+              <p className="muted">Cọc trực tiếp từ khách. Trạng thái: <Badge status={b.payment_status} /></p>
             )}
           </section>
           <section className="panel">
@@ -967,7 +974,11 @@ export function BookingDetail() {
                   ? "Hủy yêu cầu đặt lịch?"
                   : modal === "COMPLETE"
                     ? "Dịch vụ đã hoàn thành?"
-                    : "Xác nhận thông tin"
+                        : modal === "PAYMENT_NOT_RECEIVED"
+                          ? "Chưa nhận được tiền cọc"
+                          : modal === "ADMIN_CANCEL"
+                            ? "Hủy booking sau hòa giải?"
+                        : "Xác nhận thông tin"
           }
           onClose={() => {
             if (!busy) setModal("");
@@ -986,6 +997,8 @@ export function BookingDetail() {
                   "REJECT",
                   "VERIFY_PAYMENT",
                   "PAYMENT_NOT_FOUND",
+                  "PAYMENT_NOT_RECEIVED",
+                  "ADMIN_CANCEL",
                 ].includes(modal)
               ) {
                 await action(modal, String(f.get("detail")));
@@ -1008,11 +1021,6 @@ export function BookingDetail() {
                     p_accuracy: Number(f.get("accuracy")),
                     p_text: f.get("detail"),
                   });
-                if (modal === "REFUND")
-                  await rpc("confirm_refund", {
-                    p_id: id,
-                    p_reference: f.get("detail"),
-                  });
                 setModal("");
                 await load();
                 toast("Đã gửi thành công.");
@@ -1029,7 +1037,7 @@ export function BookingDetail() {
                 <select name="kind">
                   <option value="HELP">Thông tin booking</option>
                   <option value="RESCHEDULE">Đổi lịch</option>
-                  <option value="CANCEL">Hủy / hoàn tiền</option>
+                  <option value="CANCEL">Hủy / vấn đề về cọc</option>
                   <option value="DISPUTE">Vấn đề với dịch vụ</option>
                 </select>
               </Field>
@@ -1057,16 +1065,28 @@ export function BookingDetail() {
             {!["CANCEL", "COMPLETE"].includes(modal) && (
               <Field
                 label={
-                  ["VERIFY_PAYMENT", "REFUND"].includes(modal)
+                  ["VERIFY_PAYMENT"].includes(modal)
                     ? "Mã giao dịch / thời điểm / thông tin đối soát"
-                    : "Nội dung cụ thể"
+                    : modal === "PAYMENT_NOT_RECEIVED"
+                      ? "Lý do (tối đa 200 ký tự)"
+                      : modal === "ADMIN_CANCEL"
+                        ? "Lý do hòa giải"
+                        : "Nội dung cụ thể"
                 }
               >
                 <textarea
                   name="detail"
                   required
-                  minLength={10}
-                  maxLength={2000}
+                  minLength={
+                    modal === "PAYMENT_NOT_RECEIVED"
+                      ? 1
+                      : modal === "ADMIN_CANCEL"
+                        ? 5
+                        : 10
+                  }
+                  maxLength={
+                    modal === "PAYMENT_NOT_RECEIVED" ? 200 : 2000
+                  }
                   rows={4}
                   placeholder={
                     modal === "SUPPORT"
@@ -1078,8 +1098,8 @@ export function BookingDetail() {
             )}
             {modal === "CANCEL" && (
               <p>
-                Chỉ hủy trực tiếp khi chưa thanh toán cọc. Nếu đã thanh toán, đóng
-                  cửa sổ này và chọn hỗ trợ để kiểm tra giao dịch.
+                Chỉ hủy trực tiếp khi chưa chuyển cọc. Nếu đã chuyển cọc, liên
+                hệ creator và gửi yêu cầu hỗ trợ để admin hòa giải.
               </p>
             )}
             {modal === "COMPLETE" && (
