@@ -253,8 +253,9 @@ describe("PostgreSQL booking and authorization", () => {
     ).rejects.toThrow(/chưa đến bước đặt cọc/);
   });
   it("get_deposit_payee returns bank details only to booking parties", async () => {
-    await as(customer);
+    await as(owner);
     await call("select public.booking_action($1,'ACCEPT','')", [booking]);
+    await as(customer);
     const [payee] = await call("select * from public.get_deposit_payee($1)", [
       booking,
     ]);
