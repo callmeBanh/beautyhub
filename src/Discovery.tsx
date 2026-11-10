@@ -154,7 +154,7 @@ export function Home() {
           <p>
             Nền tảng tuyển chọn Photographer & Makeup Artist chuyên nghiệp tại TP.HCM.
             <br />
-            Tác phẩm thật, giá niêm yết rõ ràng, an tâm đặt cọc qua payOS.
+            Tác phẩm thật, giá niêm yết rõ ràng, đặt cọc trực tiếp cho creator.
           </p>
           <SearchBar />
         </div>
@@ -325,7 +325,7 @@ export function Home() {
       <section className="section guarantees-section">
         <div className="section-title center">
           <span className="eyebrow">AN TÂM TRÊN TỪNG BUỔI HẸN</span>
-          <h2>Cam kết bảo chứng từ BeautyHub</h2>
+          <h2>Đặt lịch minh bạch, hỗ trợ khi cần</h2>
           <p>
             Chúng mình xây dựng trải nghiệm đặt lịch minh bạch và bảo vệ tối đa quyền
             lợi của bạn.
@@ -346,10 +346,10 @@ export function Home() {
             <div className="guarantee-icon">
               <ShieldCheck size={28} />
             </div>
-            <h3>Bảo chứng Cọc An Toàn</h3>
+            <h3>Cọc trực tiếp cho creator</h3>
             <p>
-              Chỉ thanh toán cọc 30% qua payOS sau khi Creator nhận lịch. Hoàn 100%
-              tiền cọc nếu Creator hủy hẹn hoặc không đến đúng giờ.
+              Creator cung cấp thông tin nhận cọc và tự xác nhận khi nhận tiền.
+              BeautyHub không nhận hay giữ tiền cọc.
             </p>
           </div>
           <div className="guarantee-card">
@@ -1258,7 +1258,7 @@ export function Creator() {
                 <div className="breakdown-row">
                   <span className="deposit-label">
                     <span>Đặt cọc giữ lịch</span>
-                    <small>30% qua payOS</small>
+                    <small>Chuyển trực tiếp cho creator</small>
                   </span>
                   <strong>{money(depositAmount)}</strong>
                 </div>
@@ -1357,9 +1357,9 @@ export function Creator() {
               </Field>
 
               <div className="booking-assurances">
-                <CheckLine>Creator xác nhận trước khi bạn thanh toán cọc.</CheckLine>
-                <CheckLine>Bảo chứng hoàn 100% tiền cọc nếu có sự cố.</CheckLine>
-                <CheckLine>Thanh toán qua payOS, trạng thái tự động cập nhật.</CheckLine>
+                <CheckLine>Creator xác nhận lịch trước khi bạn chuyển cọc.</CheckLine>
+                <CheckLine>Hoàn cọc theo chính sách công bố giữa khách và creator; BeautyHub hỗ trợ hòa giải.</CheckLine>
+                <CheckLine>Chuyển cọc trực tiếp cho creator qua VietQR.</CheckLine>
               </div>
 
               <Link className="text-button" to="/policies">

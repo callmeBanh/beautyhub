@@ -224,35 +224,35 @@ export type Booking = {
     package: Package;
     policy: string;
     policy_version: number;
-    bank_name: string;
-    bank_account: string;
-    bank_holder: string;
+    bank_name?: string;
+    bank_account?: string;
+    bank_holder?: string;
     deposit_ready?: boolean;
   };
-  export type PayoutAccount = {
-    provider_id: string;
-    bank_bin: string;
-    bank_name: string;
-    account_number: string;
-    account_name: string;
-    updated_at: string;
-  };
-  export function validatePayoutAccount(input: {
-    bank_bin: string;
-    bank_name: string;
-    account_number: string;
-    account_name: string;
-  }) {
-    if (!/^\d{6}$/.test(input.bank_bin)) return "Chọn ngân hàng hợp lệ.";
-    if (!input.bank_name.trim() || input.bank_name.length > 100)
-      return "Tên ngân hàng không hợp lệ.";
-    if (!/^\d{6,19}$/.test(input.account_number))
-      return "Số tài khoản phải có từ 6 đến 19 chữ số.";
-    if (!/^[A-Z0-9 ]{1,50}$/.test(input.account_name.trim()))
-      return "Tên chủ tài khoản cần viết IN HOA, không dấu, tối đa 50 ký tự.";
-    return "";
-  }
 };
+export type PayoutAccount = {
+  provider_id: string;
+  bank_bin: string;
+  bank_name: string;
+  account_number: string;
+  account_name: string;
+  updated_at: string;
+};
+export function validatePayoutAccount(input: {
+  bank_bin: string;
+  bank_name: string;
+  account_number: string;
+  account_name: string;
+}) {
+  if (!/^\d{6}$/.test(input.bank_bin)) return "Chọn ngân hàng hợp lệ.";
+  if (!input.bank_name.trim() || input.bank_name.length > 100)
+    return "Tên ngân hàng không hợp lệ.";
+  if (!/^\d{6,19}$/.test(input.account_number))
+    return "Số tài khoản phải có từ 6 đến 19 chữ số.";
+  if (!/^[A-Z0-9 ]{1,50}$/.test(input.account_name.trim()))
+    return "Tên chủ tài khoản cần viết IN HOA, không dấu, tối đa 50 ký tự.";
+  return "";
+}
 export type BookingEvent = {
   id: string;
   action: string;

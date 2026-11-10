@@ -40,12 +40,12 @@ export function Terms() {
         chi tiết dịch vụ chưa được thể hiện trong hồ sơ.
       </p>
 
-      <h2>4. Thanh toán, đối soát và hoàn cọc</h2>
+      <h2>4. Tiền cọc và hòa giải</h2>
       <p>
-        [CHỜ CHỐT: Cần xác nhận và mô tả chính xác cơ chế escrow, bên giữ tiền,
-        thời điểm xác nhận giao dịch, đối soát và điều kiện hoàn cọc. Thông tin
-        hiện có trong tài liệu và mã nguồn chưa đủ thống nhất để công bố chính
-        sách.]
+        Khách chuyển cọc trực tiếp cho creator qua VietQR. BeautyHub không nhận,
+        giữ hoặc chuyển tiền cọc. Creator tự xác nhận đã nhận cọc; admin BeautyHub
+        chỉ hỗ trợ hòa giải khi có tranh chấp. [CHỜ CHỐT: tỉ lệ hoàn khi hủy
+        trước N giờ]
       </p>
 
       <h2>5. Liên hệ và cập nhật điều khoản</h2>
@@ -85,6 +85,7 @@ export function Privacy() {
           Đặt lịch: tên, số điện thoại, khu vực, địa chỉ, thời gian hẹn và ghi
           chú do khách nhập.
         </li>
+        <li>Thông tin tài khoản nhận cọc của creator.</li>
         <li>
           Thông tin kỹ thuật cần thiết để vận hành và bảo vệ phiên đăng nhập.
         </li>

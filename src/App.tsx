@@ -129,7 +129,7 @@ function Footer() {
             nghiệp tại TP.HCM.
           </p>
           <p className="footer-features">
-            ✓ 100% Tác phẩm xác minh · ✓ Cọc 30% payOS an toàn · ✓ Hoàn cọc minh bạch.
+            ✓ Hồ sơ được xem xét · ✓ Chuyển cọc trực tiếp qua VietQR · ✓ Hỗ trợ hòa giải.
           </p>
           <div className="footer-socials">
             <a href="https://instagram.com" target="_blank" rel="noreferrer" aria-label="Instagram">
@@ -649,14 +649,15 @@ function Policies() {
       <h2>Đặt lịch và tiền cọc</h2>
       <p>
         Yêu cầu đặt lịch được giữ tối đa 12 giờ để creator phản hồi. Sau khi
-        creator chấp nhận, bạn có tối đa 6 giờ để thanh toán cọc 30% qua payOS. Hạn chính xác
-        được hiển thị trong booking. Lịch chỉ được xác nhận sau khi BeautyHub
-        đối soát tiền thực nhận.
+        creator chấp nhận, bạn có tối đa 6 giờ để chuyển cọc 30% trực tiếp cho
+        creator qua VietQR. Hạn chính xác được hiển thị trong booking. Creator
+        tự xác nhận đã nhận tiền; BeautyHub không nhận hay giữ tiền cọc.
       </p>
       <p>
-        Không thanh toán sau thời hạn. Giao dịch cọc muộn hoặc bất thường cần được kiểm tra qua ticket.
+        Không chuyển tiền sau thời hạn. Nếu có vấn đề, creator và khách trao
+        đổi trực tiếp; admin BeautyHub hỗ trợ hòa giải qua ticket.
       </p>
-      <h2>Hủy, đổi lịch và hoàn tiền</h2>
+      <h2>Hủy, đổi lịch và hoàn cọc</h2>
       {settings?.cancellation_policy ? (
         <p className="preserve">{settings.cancellation_policy}</p>
       ) : (
@@ -666,9 +667,9 @@ function Policies() {
         </Alert>
       )}
       <p>
-        Mọi yêu cầu đổi lịch được xử lý qua hỗ trợ. Không tự đặt lại hoặc chuyển
-        thêm tiền trước khi có xác nhận. Khoản hoàn tiền chỉ được ghi nhận hoàn
-        tất khi có đối soát giao dịch hoàn.
+        Hoàn cọc theo chính sách công bố giữa khách và creator; BeautyHub hỗ trợ
+        hòa giải. Mọi yêu cầu đổi lịch được xử lý qua hỗ trợ; không chuyển thêm
+        tiền trước khi có xác nhận của creator.
       </p>
       <h2>Thông tin cá nhân</h2>
       <p>
@@ -731,8 +732,8 @@ function How() {
         ],
         [
           "4",
-          "Thanh toán cọc và được xác nhận",
-          "Khi creator chấp nhận, thanh toán cọc qua payOS để xác nhận lịch.",
+          "Chuyển cọc trực tiếp và được xác nhận",
+          "Khi creator chấp nhận, chuyển cọc qua VietQR; creator xác nhận đã nhận tiền.",
         ],
         [
           "5",

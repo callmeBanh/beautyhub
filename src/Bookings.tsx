@@ -426,7 +426,7 @@ export function BookingDetail() {
             "bank_bin" | "bank_name" | "account_number" | "account_name"
           >[]
         >("get_deposit_payee", { p_booking_id: id });
-        setDepositPayee(payee[0] || null);
+        setDepositPayee(payee?.[0] || null);
       } else {
         setDepositPayee(null);
       }
@@ -974,10 +974,10 @@ export function BookingDetail() {
                   ? "Hủy yêu cầu đặt lịch?"
                   : modal === "COMPLETE"
                     ? "Dịch vụ đã hoàn thành?"
-                        : modal === "PAYMENT_NOT_RECEIVED"
-                          ? "Chưa nhận được tiền cọc"
-                          : modal === "ADMIN_CANCEL"
-                            ? "Hủy booking sau hòa giải?"
+                    : modal === "PAYMENT_NOT_RECEIVED"
+                      ? "Chưa nhận được tiền cọc"
+                      : modal === "ADMIN_CANCEL"
+                        ? "Hủy booking sau hòa giải?"
                         : "Xác nhận thông tin"
           }
           onClose={() => {

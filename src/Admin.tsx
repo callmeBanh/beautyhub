@@ -18,6 +18,7 @@ import {
   errorText,
   formatDuration,
   money,
+  paymentReference,
   type Booking,
   type Profile,
   type Support,
@@ -117,20 +118,20 @@ export function Admin() {
     ["settings", "Cấu hình mở beta", Settings],
   ] as const;
   const reviews = bookings.filter((b) => b.status === "PAYMENT_REVIEW");
+  const disputeBookingIds = new Set(
+    tickets
+      .filter((ticket) => ticket.status === "OPEN" && ticket.kind === "DISPUTE")
+      .map((ticket) => ticket.booking_id),
+  );
+  const reconciliation = reviews.filter(
+    (booking) =>
+      Date.now() - Date.parse(booking.updated_at) >= 24 * 60 * 60 * 1000 ||
+      disputeBookingIds.has(booking.id),
+  );
   const overdue = bookings.filter(
     (b) =>
       ["REQUESTED", "AWAITING_DEPOSIT"].includes(b.status) &&
       effectiveStatus(b) === "EXPIRED",
-  );
-  const refunds = bookings.filter((b) => b.payment_status === "REFUND_PENDING");
-  const unusualPayments = paymentEvents.filter(
-    (event) =>
-      [
-        "UNDERPAID_REVIEW",
-        "EXPIRED_REVIEW",
-        "BOOKING_NOT_AWAITING_DEPOSIT",
-        "UNKNOWN_ORDER",
-      ].includes(event.result) || event.duplicate_count > 0,
   );
   return (
     <div className="workspace">
@@ -179,7 +180,7 @@ export function Admin() {
           <>
             <div className="metrics">
               {[
-                ["Chờ đối soát", reviews.length],
+                ["Cọc cần hòa giải", reconciliation.length],
                 [
                   "Hỗ trợ đang mở",
                   tickets.filter((t) => t.status === "OPEN").length,
@@ -188,7 +189,7 @@ export function Admin() {
                   "Hồ sơ chờ duyệt",
                   providers.filter((p) => p.status === "PENDING").length,
                 ],
-                ["Cần hoàn tiền", refunds.length],
+                ["Ticket tranh chấp", disputeBookingIds.size],
               ].map(([t, n]) => (
                 <div className="metric" key={t}>
                   <small>{t}</small>
@@ -197,21 +198,85 @@ export function Admin() {
               ))}
             </div>
             <section className="panel">
-              <h2>Tiền cọc cần đối soát</h2>
+              <h2>Cọc cần hòa giải</h2>
               <p>
-                Kiểm tra trạng thái giao dịch trước khi xử lý. Mở
-                booking để ghi mã giao dịch.
+                Chỉ hiển thị booking chờ creator phản hồi quá 24 giờ hoặc có
+                ticket tranh chấp. Tiền cọc được chuyển trực tiếp giữa khách và
+                creator; BeautyHub chỉ hỗ trợ hòa giải.
               </p>
-              {reviews.length ? (
-                reviews.map((b) => <BookingCard b={b} key={b.id} />)
+              {reconciliation.length ? (
+                reconciliation.map((b) => (
+                  <div className="list-row" key={b.id}>
+                    <div>
+                      <Link to={`/bookings/${b.id}`}>
+                        <strong>{paymentReference(b.id)}</strong>
+                      </Link>
+                      <p>
+                        {money(b.deposit)} · {dateTime(b.updated_at)}
+                      </p>
+                      <p>
+                        Mã giao dịch khách báo: {b.transfer_note || "Chưa cung cấp"}
+                      </p>
+                      {tickets
+                        .filter(
+                          (ticket) =>
+                            ticket.booking_id === b.id &&
+                            ticket.status === "OPEN" &&
+                            ticket.kind === "DISPUTE",
+                        )
+                        .map((ticket) => (
+                          <p key={ticket.id}>{ticket.message}</p>
+                        ))}
+                    </div>
+                    <div className="actions">
+                      <button
+                        className="btn small"
+                        disabled={busy}
+                        onClick={() =>
+                          void run(() =>
+                            rpc("booking_action", {
+                              p_id: b.id,
+                              p_action: "VERIFY_PAYMENT",
+                              p_detail: "Admin hòa giải: xác nhận đã nhận cọc.",
+                            }),
+                          )
+                        }
+                      >
+                        Ghi đè xác nhận
+                      </button>
+                      <button
+                        className="btn ghost small"
+                        disabled={busy}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              "Hủy booking này sau khi đã hòa giải? Việc hoàn tiền (nếu có) do khách và creator tự thỏa thuận.",
+                            )
+                          ) {
+                            void run(() =>
+                              rpc("booking_action", {
+                                p_id: b.id,
+                                p_action: "ADMIN_CANCEL",
+                                p_detail:
+                                  "Admin hòa giải: hủy booking; các bên tự thỏa thuận việc hoàn cọc.",
+                              }),
+                            );
+                          }
+                        }}
+                      >
+                        Hủy booking
+                      </button>
+                    </div>
+                  </div>
+                ))
               ) : (
-                <p className="muted">Không có giao dịch chờ đối soát.</p>
+                <p className="muted">Không có cọc cần hòa giải.</p>
               )}
             </section>
-            <section className="panel">
-              <h2>Sự kiện thanh toán payOS cần kiểm tra</h2>
-              {unusualPayments.length ? (
-                unusualPayments.map((event) => (
+            <details className="panel">
+              <summary>Lịch sử payOS (không còn dùng cho cọc)</summary>
+              {paymentEvents.length ? (
+                paymentEvents.map((event) => (
                   <div className="list-row" key={event.id}>
                     <div>
                       <span className="eyebrow">
@@ -224,7 +289,7 @@ export function Admin() {
                       </p>
                       {event.booking_id ? (
                         <Link to={`/bookings/${event.booking_id}`}>
-                          Đối soát booking →
+                          Xem booking →
                         </Link>
                       ) : (
                         <small>Không tìm thấy booking tương ứng.</small>
@@ -233,9 +298,9 @@ export function Admin() {
                   </div>
                 ))
               ) : (
-                <p className="muted">Không có sự kiện bất thường.</p>
+                <p className="muted">Chưa có sự kiện payOS.</p>
               )}
-            </section>
+            </details>
             <section className="panel">
               <h2>Yêu cầu hỗ trợ / đổi lịch / hủy</h2>
               {tickets
@@ -258,15 +323,6 @@ export function Admin() {
                 ))}
               {!tickets.some((t) => t.status === "OPEN") && (
                 <p className="muted">Không có yêu cầu đang mở.</p>
-              )}
-            </section>
-            <section className="panel">
-              <h2>Khoản hoàn tiền cần thực hiện</h2>
-              {refunds.map((b) => (
-                <BookingCard b={b} key={b.id} />
-              ))}
-              {!refunds.length && (
-                <p className="muted">Không có khoản hoàn đang chờ.</p>
               )}
             </section>
             <section className="panel">
@@ -550,9 +606,9 @@ export function Admin() {
               const f = new FormData(e.currentTarget);
               await run(() =>
                 rpc("save_settings", {
-                  p_bank: settings?.bank_name || "",
-                  p_account: settings?.bank_account || "",
-                  p_holder: settings?.bank_holder || "",
+                  p_bank: "",
+                  p_account: "",
+                  p_holder: "",
                   p_support: f.get("support"),
                   p_policy: f.get("policy"),
                   p_ready: f.get("ready") === "on",
@@ -560,14 +616,14 @@ export function Admin() {
               );
             }}
           >
-            <h2>Thông tin vận hành thật</h2>
+            <h2>Hỗ trợ và chính sách</h2>
             <p>
-              Nhập thông tin do đơn vị vận hành kiểm tra. Chính sách được lưu
-              vào từng booking; thay đổi sau không ghi đè thỏa thuận cũ.
+              BeautyHub không nhận tiền cọc. Creator tự nhập tài khoản nhận cọc
+              trong Studio; chính sách được lưu trong từng booking.
             </p>
             <Field
-              label="Chính sách hủy / đổi lịch / hoàn tiền"
-              hint="Nêu rõ các mốc thời gian, tỷ lệ hoàn, thời hạn xử lý, trường hợp creator hủy, cách liên hệ và bên nhận tiền."
+              label="Chính sách hủy / đổi lịch / hoàn cọc"
+              hint="Mô tả điều kiện đã thống nhất giữa khách và creator; không tự đặt tỷ lệ hoàn chưa được chốt."
             >
               <textarea
                 name="policy"
@@ -605,7 +661,7 @@ export function Admin() {
                     p_id: resolve.id,
                     p_resolution: f.get("resolution"),
                     p_cancel: f.get("cancel") === "on",
-                    p_refund: Number(f.get("refund") || 0),
+                    p_refund: 0,
                   }),
                 );
                 if (ok) setResolve(null);
@@ -624,22 +680,11 @@ export function Admin() {
                 <input type="checkbox" name="cancel" />
                 Hủy booking theo thỏa thuận đã thống nhất
               </label>
-              <Field label="Số tiền hoàn khi hủy (VND)">
-                <input
-                  type="number"
-                  name="refund"
-                  min={0}
-                  max={
-                    bookings.find((b) => b.id === resolve.booking_id)
-                      ?.deposit || 0
-                  }
-                  defaultValue={0}
-                />
-              </Field>
               <p>
-                Khoản hoàn sẽ vào hàng chờ; chỉ xác nhận đã hoàn sau khi thực
-                hệ thống xác nhận thanh toán cọc. Đổi lịch cần thống nhất hai bên qua hỗ trợ,
-                hủy booking cũ và đặt lịch mới sau khi xử lý tiền.
+                BeautyHub không nhận hoặc hoàn tiền cọc. Nếu hủy, khách và
+                creator tự thỏa thuận việc chuyển trả trực tiếp; admin chỉ ghi
+                nhận kết quả hòa giải. Đổi lịch cần thống nhất hai bên rồi tạo
+                booking mới.
               </p>
               <button className="btn" disabled={busy}>
                 Ghi nhận xử lý

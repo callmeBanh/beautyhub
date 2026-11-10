@@ -398,7 +398,7 @@ export function Steps() {
         [
           "02",
           "Đặt lịch & Giữ cọc 30%",
-          "Creator xác nhận nhận lịch trước khi bạn thanh toán cọc qua payOS.",
+          "Creator xác nhận lịch; bạn chuyển cọc trực tiếp cho creator qua VietQR.",
         ],
         [
           "03",

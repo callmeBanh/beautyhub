@@ -20,7 +20,7 @@ Mở http://127.0.0.1:4173. Tạo `.env` từ `.env.example`, điền URL Supaba
 ## Thiết lập Supabase và Google
 
 1. Chủ dự án tạo Supabase Free project, chọn region phù hợp (ví dụ Singapore), bật bảo vệ tài khoản quản trị. Không cần nhập thông tin thẻ cho mã nguồn này.
-2. Trong SQL Editor của project **mới**, chạy lần lượt `supabase/migrations/202610050001_beta.sql`, `202610050002_operations.sql`, `202611040001_package_details.sql`, `202611080001_package_anniversary.sql`, rồi `202611080002_payos_deposits.sql`. Migration chi tiết gói tạo các trường bổ sung và RPC `save_package_details`; migration kỷ niệm cho phép nhu cầu Kỷ niệm và giới hạn các giá trị nhu cầu được ghi mới. Migration PayOS thêm bảng link/sự kiện, RLS và RPC chỉ dành cho `service_role`. Ràng buộc kỷ niệm được thêm `NOT VALID` để không quét/từ chối dữ liệu cũ khi áp dụng. Không chạy migration khởi tạo lên database đang có dữ liệu cùng tên. Schema `private` không được thêm vào exposed API schemas.
+2. Trong SQL Editor của project **mới**, chạy lần lượt các migration theo thứ tự tên, gồm `202611080002_payos_deposits.sql` và migration mới `202611100001_direct_deposits.sql`. Migration cuối tạo thông tin nhận cọc của creator, quyền RLS/RPC và luồng xác nhận cọc trực tiếp. Migration payOS và các bảng/functions liên quan vẫn được giữ cho phase sau; chúng không được dùng cho cọc hiện tại. Không chạy migration khởi tạo lên database đang có dữ liệu cùng tên. Schema `private` không được thêm vào exposed API schemas.
 3. Với Supabase project đã chạy trước đó, chỉ chạy migration mới chưa áp dụng; không chạy lại hai migration khởi tạo. `supabase db push` ở mục deploy bên dưới sẽ áp dụng migrations chưa chạy. Để xác định migration gói đã được áp dụng, chạy:
 
 ```sql
@@ -46,17 +46,17 @@ update public.profiles set role='ADMIN' where id='<verified-auth-user-uuid>'::uu
 ```
 
 8. Creator đăng nhập → Không gian creator → cập nhật tên/số điện thoại trong Tài khoản, tạo hồ sơ, gói, ít nhất 3 ảnh thật có quyền sử dụng và lịch trống. Admin kiểm tra liên hệ, tác phẩm, điều kiện gói rồi duyệt. Không tải ảnh minh họa lên thành tác phẩm của creator.
-9. Admin → Cấu hình mở beta: link hỗ trợ HTTPS, chính sách hủy/đổi/hoàn và người trực. Không còn cấu hình tài khoản ngân hàng nhận cọc trong giao diện. Chỉ mở `ready` sau khi nghiệm thu toàn bộ checklist dưới đây.
+9. Creator → Nhận cọc: nhập ngân hàng, số tài khoản và tên chủ tài khoản để tạo QR nhận chuyển khoản trực tiếp. Admin → Cấu hình mở beta: link hỗ trợ HTTPS, chính sách hủy/đổi và người trực. Chỉ mở `ready` sau khi nghiệm thu toàn bộ checklist dưới đây.
 
 ## Deploy frontend lên Vercel
 
 Tạo Vercel project từ Git repository, dùng lệnh build `npm run build`, output `dist`, Node 22.12+. Chỉ khai báo các biến frontend `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` và các biến `VITE_*` public cần thiết trước khi build. **Không khai báo PayOS secret hoặc Supabase service-role key trong Vercel.**
 
-`vercel.json` rewrite deep link về SPA; CSP/security headers được cấu hình trong đó và `public/_headers`. CSP hiện không cần cho phép thêm PayOS vì frontend chỉ mở checkout bằng điều hướng trình duyệt, còn API/webhook chạy trên Supabase Edge Functions. Nếu dùng Supabase custom domain, cập nhật CSP có chủ đích. Không bật cache API hoặc service-worker cache thông tin riêng tư. Nghiệm thu URL callback thật trước khi mở booking.
+`vercel.json` rewrite deep link về SPA; CSP/security headers được cấu hình trong đó và `public/_headers`. Luồng cọc VietQR hiện không gọi PayOS từ frontend. Nếu dùng Supabase custom domain hoặc bật lại PayOS trong phase sau, cập nhật CSP có chủ đích. Không bật cache API hoặc service-worker cache thông tin riêng tư. Nghiệm thu URL callback thật trước khi mở booking.
 
-## Deploy PayOS qua Supabase Edge Functions
+## PayOS giữ cho phase sau (hiện không dùng cho cọc)
 
-Chỉ tạo và lưu các secrets sau trong Supabase Edge Functions; không đặt chúng trong Vercel hoặc biến `VITE_*`:
+Hai Edge Functions `create-payment-link` và `payos-webhook`, các bảng payment links/events và secrets liên quan được giữ nguyên nhưng không tham gia luồng cọc hiện tại. Không cần cấu hình hoặc deploy lại chúng để mở cọc VietQR. Chỉ khi khởi động phase PayOS sau này mới dùng quy trình dưới đây; secrets chỉ lưu trong Supabase Edge Functions, không đặt chúng trong Vercel hoặc biến `VITE_*`:
 
 - `PAYOS_CLIENT_ID`
 - `PAYOS_API_KEY`
@@ -75,7 +75,7 @@ npx supabase functions deploy create-payment-link --use-api
 npx supabase functions deploy payos-webhook
 ```
 
-`create-payment-link` yêu cầu JWT; riêng `payos-webhook` xác thực chữ ký PayOS. Khi PayOS chưa cấu hình hoặc tạo link lỗi, khách được hướng dẫn thử lại hoặc liên hệ hỗ trợ; không có luồng thanh toán thủ công.
+`create-payment-link` yêu cầu JWT; riêng `payos-webhook` xác thực chữ ký PayOS. Các bước deploy ở mục này dành riêng cho phase sau, không chạy trong phát hành chuyển cọc trực tiếp.
 
 Khi test local, cập nhật danh sách origin trong Supabase (giữ domain production và thêm đúng các origin cần dùng): `npx supabase secrets set ALLOWED_ORIGINS="https://beautyhub.example,http://localhost:4173,http://127.0.0.1:4173"`. Chỉ các origin được liệt kê mới qua CORS.
 ## Luồng giao dịch
@@ -83,16 +83,16 @@ Khi test local, cập nhật danh sách origin trong Supabase (giữ domain prod
 `REQUESTED → AWAITING_DEPOSIT → PAYMENT_REVIEW → CONFIRMED → COMPLETED → review`
 
 - Khách gửi yêu cầu; giữ lịch tối đa 12 giờ, tối thiểu đặt trước 24 giờ.
-- Creator nhận lịch; khách có tối đa 6 giờ thanh toán cọc 30% qua payOS. Giá, nội dung gói và policy được snapshot theo booking.
-- Khách thanh toán cọc 30% duy nhất qua PayOS; webhook xác nhận tự động khi giao dịch hợp lệ. Giao dịch thiếu tiền, hết hạn hoặc trùng được ghi nhận để admin xử lý trong `PAYMENT_REVIEW`. Không tự động gửi SMS/email trả phí.
+- Creator chỉ có thể nhận lịch khi đã khai báo tài khoản nhận cọc. Khách có tối đa 6 giờ chuyển cọc 30% trực tiếp cho creator qua VietQR; nội dung chuyển khoản là mã booking.
+- Khách bấm “Tôi đã chuyển tiền” và có thể nhập mã giao dịch. Creator tự xác nhận đã nhận tiền hoặc báo chưa nhận được; `PAYMENT_REVIEW` cần creator phản hồi. Admin chỉ hòa giải, không nhận/giữ/chuyển tiền cọc. Không tự động gửi SMS/email trả phí.
 - Sau giờ kết thúc, creator mới được hoàn thành. Chỉ khách booking đó được review, một lần, bốn tiêu chí 1–5.
-- Chưa thanh toán cọc: khách hủy trực tiếp. Giao dịch cọc đã nhận hoặc cần kiểm tra: gửi ticket hỗ trợ; admin xử lý theo chính sách snapshot. Hoàn tiền được ghi `REFUND_PENDING` trước, chỉ ghi `REFUNDED` sau giao dịch hoàn thật.
+- Chưa chuyển cọc: khách có thể hủy trực tiếp. Tranh chấp: gửi ticket hỗ trợ; admin hòa giải theo chính sách đã công bố giữa khách và creator. Việc hoàn cọc (nếu có) do hai bên tự thỏa thuận và chuyển trực tiếp.
 - Đổi lịch xử lý thủ công qua hỗ trợ: thống nhất hai bên, xử lý tiền booking cũ rồi đặt booking mới. Không có công cụ đổi giờ giữ nguyên cọc tự động.
-- App chỉ theo dõi **tiền cọc**, không phải kế toán, ví, escrow hay payout. Phần còn lại khách thanh toán trực tiếp cho creator sau buổi hẹn; GMV không phải doanh thu nền tảng.
+- App chỉ lưu trạng thái khách báo chuyển và creator xác nhận; BeautyHub không nhận, giữ hoặc chuyển tiền cọc. Phần còn lại khách thanh toán trực tiếp cho creator sau buổi hẹn; GMV không phải doanh thu nền tảng.
 
 ## Vận hành không thể bỏ qua
 
-- Người trực kiểm tra booking mới, `PAYMENT_REVIEW`, hỗ trợ và khoản hoàn. Thông báo hiện là **trong web**; không tự gửi email/Zalo/SMS. Người trực phải liên hệ thủ công, đặc biệt creator cần phản hồi trong 12 giờ, khách sắp hết hạn thanh toán cọc và lịch trong 24 giờ tới.
+- Người trực kiểm tra booking mới, `PAYMENT_REVIEW` quá 24 giờ, ticket tranh chấp và lịch trong 24 giờ tới. Thông báo hiện là **trong web**; không tự gửi email/Zalo/SMS. Admin hỗ trợ hòa giải, khách và creator tự xử lý chuyển tiền trực tiếp.
 - Không thanh toán theo lời nhắn ngoài thông tin booking. Giao dịch cọc muộn hoặc bất thường cần được kiểm tra qua ticket; booking hết hạn không tự phục hồi và không tự chiếm lịch mới.
 - Đặt `ready=false` khi không có người trực hoặc hệ thống lỗi. Việc đóng nhận mới không xóa booking hiện có.
 - Mỗi ngày sao lưu dữ liệu bằng Supabase CLI `supabase db dump --db-url <connection> -f backup.sql --data-only` trên máy quản trị; tránh ghi password vào history/log. Sao lưu role/schema theo hướng dẫn chính thức và copy riêng các object portfolio: dump DB **không chứa file ảnh**. Giữ bản sao mã hóa ngoài project, giới hạn người đọc; thử khôi phục vào môi trường riêng trước khi mở beta. Không tự động chạy backup khi chưa có kết nối quản trị.
@@ -101,16 +101,17 @@ Khi test local, cập nhật danh sách origin trong Supabase (giữ domain prod
 
 ## Kiểm thử trước khi mời khách
 
-`npm test` chạy chính migration bằng PGlite (PostgreSQL nhúng), kiểm tra RLS, quyền actor, state machine, snapshot, idempotency, ràng buộc loại trừ lịch giao nhau, hoàn tiền, review, nhắc lịch và analytics. Mock chỉ phần schema auth/storage của Supabase; **không thay thế nghiệm thu Auth/PostgREST/Storage trên hosted Supabase, không phải load test nhiều kết nối**.
+`npm test` chạy migration bằng PGlite (PostgreSQL nhúng), kiểm tra RLS payout, quyền actor, RPC nhận cọc, state machine, snapshot, idempotency, ràng buộc loại trừ lịch giao nhau, review, nhắc lịch và analytics. Mock chỉ phần schema auth/storage của Supabase; **không thay thế nghiệm thu Auth/PostgREST/Storage trên hosted Supabase, không phải load test nhiều kết nối**.
 
 - [ ] Google login/logout/callback/deep-link trên production, hai tài khoản khách và một creator/admin riêng.
 - [ ] Creator tạo và cập nhật hồ sơ, ảnh thật, package, mở/đóng lịch; quyền đọc ảnh người lạ và ảnh chưa duyệt đúng.
 - [ ] Khách tìm đúng creator theo tất cả bộ lọc AND; ngày/giờ Việt Nam đúng.
 - [ ] Hai trình duyệt gửi cùng giờ đồng thời: chỉ một booking giữ được lịch. Bấm gửi lại sau lỗi mạng không sinh hai booking.
-- [ ] PayOS webhook hợp lệ, thiếu tiền, trễ hạn, trùng giao dịch và booking đã hủy; xác nhận chỉ qua dữ liệu DB, không tin query string return URL.
+- [ ] Creator nhập và cập nhật đúng tài khoản nhận cọc; khách chỉ đọc thông tin qua RPC trong đúng booking/trạng thái.
+- [ ] Chuyển VietQR, mã giao dịch tùy chọn, creator xác nhận/chưa nhận; admin hòa giải tranh chấp.
 
 - [ ] Cron hết hạn giữ lịch, nhắc lịch đúng một lần cho hai bên, không tự giải phóng `PAYMENT_REVIEW`.
-- [ ] Hủy, tranh chấp và hoàn tiền thật; mã đối soát được lưu, không hoàn hai lần.
+- [ ] Hủy và tranh chấp; xác nhận chính sách giữa hai bên, không xử lý chuyển/hoàn tiền qua BeautyHub.
 - [ ] Hoàn thành sau giờ kết thúc → review một lần; khách lạ không xem địa chỉ/số điện thoại/lịch sử booking.
 - [ ] Desktop 1440px, mobile 390px, mất mạng, tải lại, back/forward và báo lỗi có thể khôi phục.
 - [ ] Sao lưu/khôi phục DB + ảnh; đối soát dữ liệu trước khi mở `ready`.
@@ -120,7 +121,7 @@ Khi test local, cập nhật danh sách origin trong Supabase (giữ domain prod
 - Web-first, responsive, không cần cài app. Chưa có native app/chat/AI matching, payout tự động hay push notification.
 - Thống kê funnel chỉ tài khoản đã đăng nhập, tối đa 100 event/ngày/tài khoản, gộp cùng loại trong 10 giây, giữ 90 ngày. Không ghi search term, địa chỉ hoặc ghi chú vào event. `CONFIRMED`/`COMPLETED` lấy từ booking thật. Chưa có visitor analytics cho khách chưa đăng nhập.
 - Admin metrics tổng hợp toàn bộ database; danh sách admin giới hạn 500 booking, 200 ticket, 500 users và 100 audit gần nhất. Tăng trưởng vượt beta cần pagination/monitoring/anti-abuse và load testing bổ sung.
-- Có khóa tại DB + exclusion constraint, không dựa vào đồng hồ hoặc localStorage phía khách để xác nhận giữ chỗ/thanh toán. PayOS là luồng thanh toán cọc duy nhất. Rate limit nghiệp vụ chưa thay thế WAF chống tấn công phân tán.
+- Có khóa tại DB + exclusion constraint, không dựa vào đồng hồ hoặc localStorage phía khách để xác nhận giữ chỗ/trạng thái cọc. VietQR là phương thức chuyển trực tiếp, creator xác nhận thủ công; PayOS chỉ được giữ cho phase sau. Rate limit nghiệp vụ chưa thay thế WAF chống tấn công phân tán.
 - Portfolio được nén WebP trước upload, private bucket giới hạn 512 KB/ảnh và 12 ảnh/creator. Kiểm tra MIME/size không phải dịch vụ quét mã độc hoặc nhận diện ảnh tự động. Orphan upload cần người quản trị dọn, hiện chưa có nút xóa ảnh của creator.
 - SEO dùng URL riêng, title/description cơ bản; chưa prerender từng hồ sơ, chưa có sitemap production hay OpenGraph động. Không giả định SPA đã đạt SEO đầy đủ.
 - Prototype và ảnh demo giữ ở `legacy/`, không nằm trong bản deploy. `data/db.json` cũ không được dùng/import vào database mới. Không deploy `legacy/server.cjs`.
