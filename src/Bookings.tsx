@@ -993,13 +993,9 @@ export function BookingDetail() {
                 return;
               }
               if (
-                [
-                  "REJECT",
-                  "VERIFY_PAYMENT",
-                  "PAYMENT_NOT_FOUND",
-                  "PAYMENT_NOT_RECEIVED",
-                  "ADMIN_CANCEL",
-                ].includes(modal)
+                ["REJECT", "PAYMENT_NOT_RECEIVED", "ADMIN_CANCEL"].includes(
+                  modal,
+                )
               ) {
                 await action(modal, String(f.get("detail")));
                 return;
@@ -1065,13 +1061,11 @@ export function BookingDetail() {
             {!["CANCEL", "COMPLETE"].includes(modal) && (
               <Field
                 label={
-                  ["VERIFY_PAYMENT"].includes(modal)
-                    ? "Mã giao dịch / thời điểm / thông tin đối soát"
-                    : modal === "PAYMENT_NOT_RECEIVED"
-                      ? "Lý do (tối đa 200 ký tự)"
-                      : modal === "ADMIN_CANCEL"
-                        ? "Lý do hòa giải"
-                        : "Nội dung cụ thể"
+                  modal === "PAYMENT_NOT_RECEIVED"
+                    ? "Lý do (tối đa 200 ký tự)"
+                    : modal === "ADMIN_CANCEL"
+                      ? "Lý do hòa giải"
+                      : "Nội dung cụ thể"
                 }
               >
                 <textarea
