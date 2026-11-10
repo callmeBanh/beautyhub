@@ -149,7 +149,10 @@ BEGIN
       'provider_name', p.name,
       'package', to_jsonb(pk),
       'policy', cfg.cancellation_policy,
-      'policy_version', cfg.policy_version
+      'policy_version', cfg.policy_version,
+      'deposit_ready', EXISTS (
+        SELECT 1 FROM public.provider_payout_accounts WHERE provider_id = p.id
+      )
     ),
     trim(p_name), p_phone, p_district, trim(p_address), p_notes, p_start, finish,
     pk.price, ceil(pk.price * 0.3),
@@ -180,7 +183,8 @@ BEGIN
   IF auth.uid() IS NULL OR NOT (is_customer OR is_owner OR public.is_admin()) THEN
     RAISE EXCEPTION 'Bạn không có quyền xem thông tin nhận cọc.';
   END IF;
-  IF is_customer AND b.status NOT IN ('AWAITING_DEPOSIT', 'PAYMENT_REVIEW') THEN
+  IF is_customer AND NOT is_owner AND NOT public.is_admin()
+     AND b.status NOT IN ('AWAITING_DEPOSIT', 'PAYMENT_REVIEW') THEN
     RAISE EXCEPTION 'Booking chưa đến bước đặt cọc.';
   END IF;
   RETURN QUERY
@@ -222,6 +226,9 @@ BEGIN
   IF length(p_detail) > 2000 OR length(p_transfer_note) > 60 THEN
     RAISE EXCEPTION 'Nội dung quá dài.';
   END IF;
+  IF p_action = 'PAYMENT_NOT_RECEIVED' AND length(p_detail) > 200 THEN
+    RAISE EXCEPTION 'Lý do chưa nhận tiền tối đa 200 ký tự.';
+  END IF;
   IF p_transfer_note IS NOT NULL AND p_action <> 'REPORT_PAYMENT' THEN
     RAISE EXCEPTION 'Mã giao dịch chỉ dùng khi báo đã chuyển cọc.';
   END IF;
@@ -249,7 +256,8 @@ BEGIN
     END IF;
     UPDATE public.bookings
     SET status = 'AWAITING_DEPOSIT',
-        hold_until = least(now() + interval '6 hours', b.starts_at - interval '6 hours')
+        hold_until = least(now() + interval '6 hours', b.starts_at - interval '6 hours'),
+        snapshot = jsonb_set(b.snapshot, '{deposit_ready}', 'true'::jsonb, true)
     WHERE id = p_id;
   ELSIF p_action = 'REJECT' AND owner AND b.status = 'REQUESTED'
         AND length(trim(p_detail)) >= 5 THEN
@@ -302,7 +310,15 @@ BEGIN
     RAISE EXCEPTION 'Thao tác không hợp lệ hoặc cần bổ sung lý do. Hãy tải lại booking.';
   END IF;
   UPDATE public.bookings SET updated_at = now() WHERE id = p_id;
-  PERFORM private.event(p_id, p_action, p_detail);
+  PERFORM private.event(
+    p_id,
+    p_action,
+    CASE
+      WHEN p_action = 'REPORT_PAYMENT'
+        THEN coalesce(nullif(trim(p_transfer_note), ''), 'Khách báo đã chuyển cọc.')
+      ELSE p_detail
+    END
+  );
   IF admin OR p_action IN ('VERIFY_PAYMENT', 'PAYMENT_NOT_RECEIVED') THEN
     INSERT INTO public.audit_log(actor_id, action, target_id, detail)
     VALUES (auth.uid(), p_action, p_id, p_detail);

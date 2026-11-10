@@ -341,7 +341,7 @@ describe("PostgreSQL booking and authorization", () => {
         id,
         "x".repeat(201),
       ]),
-    ).rejects.toThrow(/quá dài/);
+    ).rejects.toThrow(/tối đa 200/);
   });
   it("admin can override a reported transfer", async () => {
     await as(customer);
