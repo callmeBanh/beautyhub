@@ -6,6 +6,9 @@ import { btree_gist } from "@electric-sql/pglite/contrib/btree_gist";
 let db: PGlite;
 const customer = "11111111-1111-4111-8111-111111111111",
   other = "22222222-2222-4222-8222-222222222222",
+  depositCustomerOne = "55555555-5555-4555-8555-555555555555",
+  depositCustomerTwo = "66666666-6666-4666-8666-666666666666",
+  depositCustomerThree = "77777777-7777-4777-8777-777777777777",
   owner = "33333333-3333-4333-8333-333333333333",
   admin = "44444444-4444-4444-8444-444444444444";
 let provider: string, pkg: string, booking: string;
@@ -75,12 +78,21 @@ beforeAll(async () => {
   await db.exec(
     readFileSync("supabase/migrations/202611080002_payos_deposits.sql", "utf8"),
   );
-  await db.query("insert into auth.users(id) values ($1),($2),($3),($4)", [
-    customer,
-    other,
-    owner,
-    admin,
-  ]);
+  await db.exec(
+    readFileSync("supabase/migrations/202611100001_direct_deposits.sql", "utf8"),
+  );
+  await db.query(
+    "insert into auth.users(id) values ($1),($2),($3),($4),($5),($6),($7)",
+    [
+      customer,
+      other,
+      owner,
+      admin,
+      depositCustomerOne,
+      depositCustomerTwo,
+      depositCustomerThree,
+    ],
+  );
   await db.query("update public.profiles set role='ADMIN' where id=$1", [
     admin,
   ]);
@@ -94,6 +106,10 @@ beforeAll(async () => {
       "select public.save_provider('test-studio','Test Studio','Photographer','Hồ sơ kiểm thử dữ liệu có xác minh.',array['Quận 1'],array['Natural','Korean']) id",
     )
   )[0].id;
+  await call(
+    "insert into public.provider_payout_accounts(provider_id,bank_bin,bank_name,account_number,account_name) values($1,'970436','Vietcombank','123456789','TEST CREATOR')",
+    [provider],
+  );
   pkg = (
     await call<{ id: string }>(
       "select public.save_package(null,'Gói 2 giờ','Personal','Mô tả gói kiểm thử',120,1200000,7,'20 ảnh chỉnh','Studio trả riêng',true) id",
@@ -201,6 +217,20 @@ describe("PostgreSQL booking and authorization", () => {
       ]),
     ).rejects.toThrow(/Không có quyền/);
   });
+  it("creator cannot accept a booking before adding a payout account", async () => {
+    await db.exec("reset role");
+    await call("delete from public.provider_payout_accounts where provider_id=$1", [
+      provider,
+    ]);
+    await as(owner);
+    await expect(
+      call("select public.booking_action($1,'ACCEPT','')", [booking]),
+    ).rejects.toThrow(/cập nhật thông tin nhận cọc/);
+    await call(
+      "insert into public.provider_payout_accounts(provider_id,bank_bin,bank_name,account_number,account_name) values($1,'970436','Vietcombank','123456789','TEST CREATOR')",
+      [provider],
+    );
+  });
   it("creator acceptance does not set payment paid", async () => {
     await as(owner);
     await call("select public.booking_action($1,'ACCEPT','')", [booking]);
@@ -210,18 +240,154 @@ describe("PostgreSQL booking and authorization", () => {
     expect(b.status).toBe("AWAITING_DEPOSIT");
     expect(b.payment_status).toBe("UNPAID");
   });
-  it("a creator cannot verify money, complete early, or invent statuses", async () => {
+  it("customers cannot read payout rows or get payee data before deposit is due", async () => {
+    await db.exec("reset role");
+    await call(
+      "update public.bookings set status='REQUESTED',payment_status='UNPAID',hold_until=now()+interval '6 hours' where id=$1",
+      [booking],
+    );
+    await as(customer);
+    expect(await call("select * from public.provider_payout_accounts")).toHaveLength(0);
+    await expect(
+      call("select * from public.get_deposit_payee($1)", [booking]),
+    ).rejects.toThrow(/chưa đến bước đặt cọc/);
+  });
+  it("get_deposit_payee returns bank details only to booking parties", async () => {
+    await as(owner);
+    await call("select public.booking_action($1,'ACCEPT','')", [booking]);
+    await as(customer);
+    const [payee] = await call("select * from public.get_deposit_payee($1)", [
+      booking,
+    ]);
+    expect(payee).toEqual({
+      bank_bin: "970436",
+      bank_name: "Vietcombank",
+      account_number: "123456789",
+      account_name: "TEST CREATOR",
+    });
+    await as(other);
+    await expect(
+      call("select * from public.get_deposit_payee($1)", [booking]),
+    ).rejects.toThrow(/không có quyền/);
+    await as(owner);
+    expect(await call("select * from public.get_deposit_payee($1)", [booking]))
+      .toEqual([payee]);
+    await as(admin);
+    expect(await call("select * from public.get_deposit_payee($1)", [booking]))
+      .toEqual([payee]);
+  });
+  it("a creator cannot confirm another creator's booking", async () => {
+    await db.exec("reset role");
+    const [{ id: otherProvider }] = await call<{ id: string }>(
+      "insert into public.providers(owner_id,slug,name,category) values($1,'other-studio','Other Studio','Photographer') returning id",
+      [other],
+    );
+    const [{ id: otherBooking }] = await call<{ id: string }>(
+      `insert into public.bookings(
+        customer_id,provider_id,package_id,request_key,snapshot,customer_name,phone,
+        district,address,starts_at,ends_at,price,deposit,status,payment_status
+      ) select customer_id,$2,package_id,gen_random_uuid(),snapshot,customer_name,phone,
+        district,address,starts_at,ends_at,price,deposit,'PAYMENT_REVIEW','REPORTED'
+        from public.bookings where id=$1 returning id`,
+      [booking, otherProvider],
+    );
     await as(owner);
     await expect(
-      call("select public.booking_action($1,'VERIFY_PAYMENT','123456789')", [
-        booking,
+      call("select public.booking_action($1,'VERIFY_PAYMENT','')", [
+        otherBooking,
+      ]),
+    ).rejects.toThrow(/không có quyền/);
+  });
+  it("creator can confirm a reported transfer and not-received requires a reason", async () => {
+    await as(depositCustomerOne);
+    const id = await createAwaiting(
+      `${day}T12:00:00+07:00`,
+      depositCustomerOne,
+    );
+    await as(depositCustomerOne);
+    await call(
+      "select public.booking_action($1,'REPORT_PAYMENT','', 'TX123456')",
+      [id],
+    );
+    const [reported] = await call(
+      "select status,transfer_note from public.bookings where id=$1",
+      [id],
+    );
+    expect(reported).toEqual({
+      status: "PAYMENT_REVIEW",
+      transfer_note: "TX123456",
+    });
+    expect(await call("select * from public.get_deposit_payee($1)", [id]))
+      .toHaveLength(1);
+    await as(owner);
+    await call("select public.booking_action($1,'VERIFY_PAYMENT','')", [
+      id,
+    ]);
+    const [confirmed] = await call(
+      "select status,payment_status from public.bookings where id=$1",
+      [id],
+    );
+    expect(confirmed).toEqual({ status: "CONFIRMED", payment_status: "PAID" });
+    await expect(
+      call("select public.booking_action($1,'PAYMENT_NOT_RECEIVED','')", [
+        id,
       ]),
     ).rejects.toThrow(/Thao tác/);
+  });
+  it("creator can return a reported transfer to awaiting deposit with a reason", async () => {
+    await as(depositCustomerTwo);
+    const nextDay = await addPayOSAvailability(4);
+    const id = await createAwaiting(
+      `${nextDay}T09:00:00+07:00`,
+      depositCustomerTwo,
+    );
+    await as(depositCustomerTwo);
+    await call("select public.booking_action($1,'REPORT_PAYMENT','')", [id]);
+    await as(owner);
+    await call(
+      "select public.booking_action($1,'PAYMENT_NOT_RECEIVED','Chưa thấy tiền vào tài khoản')",
+      [id],
+    );
+    const [b] = await call(
+      "select status,payment_status,transfer_note from public.bookings where id=$1",
+      [id],
+    );
+    expect(b).toEqual({
+      status: "AWAITING_DEPOSIT",
+      payment_status: "UNPAID",
+      transfer_note: null,
+    });
+    await expect(
+      call("select public.booking_action($1,'PAYMENT_NOT_RECEIVED',$2)", [
+        id,
+        "x".repeat(201),
+      ]),
+    ).rejects.toThrow(/tối đa 200/);
+  });
+  it("admin can override a reported transfer", async () => {
+    await as(depositCustomerThree);
+    const nextDay = await addPayOSAvailability(5);
+    const id = await createAwaiting(
+      `${nextDay}T09:00:00+07:00`,
+      depositCustomerThree,
+    );
+    await as(depositCustomerThree);
+    await call("select public.booking_action($1,'REPORT_PAYMENT','')", [id]);
+    await as(admin);
+    await call("select public.booking_action($1,'VERIFY_PAYMENT','')", [id]);
+    const [b] = await call(
+      "select status,payment_status from public.bookings where id=$1",
+      [id],
+    );
+    expect(b).toEqual({ status: "CONFIRMED", payment_status: "PAID" });
+  });
+  it("a creator cannot complete early or invent statuses", async () => {
+    await as(owner);
     await expect(
       call("select public.booking_action($1,'ARBITRARY','')", [booking]),
     ).rejects.toThrow(/Thao tác/);
   });
-  it("customer reports transfer; only admin verifies actual payment", async () => {
+  it("customer reports transfer; admin can still override the creator", async () => {
     await as(customer);
     await call(
       "select public.booking_action($1,'REPORT_PAYMENT','Bank ref 123456')",
@@ -231,11 +397,6 @@ describe("PostgreSQL booking and authorization", () => {
       booking,
     ]);
     expect(b.payment_status).toBe("REPORTED");
-    await expect(
-      call("select public.booking_action($1,'VERIFY_PAYMENT','123456789')", [
-        booking,
-      ]),
-    ).rejects.toThrow(/Thao tác/);
     await as(admin);
     await call(
       "select public.booking_action($1,'VERIFY_PAYMENT','Bank verified 123456')",
@@ -269,7 +430,26 @@ describe("PostgreSQL booking and authorization", () => {
     expect(b.price).toBe(1200000);
     expect(b.snapshot.package.duration).toBe(120);
   });
+  it("admin cannot record a BeautyHub refund for a direct creator deposit", async () => {
+    await as(customer);
+    const [{ id }] = await call<{ id: string }>(
+      "select public.request_support($1,'CANCEL','Xin hỗ trợ hòa giải việc hủy booking') id",
+      [booking],
+    );
+    await as(admin);
+    await expect(
+      call(
+        "select public.resolve_support($1,'Hai bên tự thỏa thuận chuyển trả trực tiếp',true,360000)",
+        [id],
+      ),
+    ).rejects.toThrow(/không hoàn cọc chuyển trực tiếp/);
+  });
   it("support cancellation enters refund queue, then records actual refund", async () => {
+    await db.exec("reset role");
+    await call(
+      "insert into public.payment_links(booking_id,payos_order_code,amount,status,expires_at) values($1,123456789,$2,'PAID',now()+interval '1 day')",
+      [booking, 360000],
+    );
     await as(customer);
     const [{ id }] = await call<{ id: string }>(
       "select public.request_support($1,'CANCEL','Xin hủy và hoàn cọc theo chính sách') id",
