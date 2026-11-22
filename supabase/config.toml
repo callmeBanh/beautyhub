@@ -3,3 +3,6 @@ verify_jwt = true
 
 [functions.payos-webhook]
 verify_jwt = false
+
+[functions.create-subscription-link]
+verify_jwt = true

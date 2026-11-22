@@ -81,6 +81,9 @@ beforeAll(async () => {
   await db.exec(
     readFileSync("supabase/migrations/202611100001_direct_deposits.sql", "utf8"),
   );
+  await db.exec(
+    readFileSync("supabase/migrations/202611120001_creator_subscription.sql", "utf8"),
+  );
   await db.query(
     "insert into auth.users(id) values ($1),($2),($3),($4),($5),($6),($7)",
     [
@@ -899,5 +902,89 @@ describe("PostgreSQL booking and authorization", () => {
         await call("select status from public.bookings where id=$1", [booking])
       )[0].status,
     ).toBe("EXPIRED");
+  });
+});
+
+describe("Creator subscription", () => {
+  const sub = (days = 30) => days;
+  async function pay(amount: number) {
+    await as(null, "service_role");
+    const [order] = await call<{ payos_order_code: string; amount: number }>(
+      "select * from public.reserve_subscription_order($1, now() + interval '6 hours')",
+      [provider],
+    );
+    const [{ r }] = await call<{ r: any }>(
+      "select public.activate_subscription($1,$2,true) r",
+      [Number(order.payos_order_code), amount],
+    );
+    return { order, r };
+  }
+  const endOf = async () => {
+    await db.exec("reset role");
+    return (
+      await call<{ e: Date }>(
+        "select current_period_end e from public.creator_subscriptions where provider_id=$1",
+        [provider],
+      )
+    )[0]?.e;
+  };
+  it("flag off blocks nothing", async () => {
+    await db.exec("reset role");
+    await db.exec("update public.settings set subscription_enforced=false where id");
+    await as(customer);
+    expect((await call("select public.provider_accepts_bookings($1) a", [provider]))[0].a).toBe(true);
+  });
+  it("flag on without a card rejects new bookings and extra photos", async () => {
+    await db.exec("reset role");
+    await db.exec(
+      "update public.settings set subscription_enforced=true,free_portfolio_limit=0 where id",
+    );
+    await as(customer);
+    await expect(create(`${day}T15:00:00+07:00`)).rejects.toThrow(/Creator chưa nhận booking/);
+    await db.exec("reset role");
+    await db.query("insert into storage.objects(bucket_id,name) values('portfolio',$1)", [`${owner}/a.webp`]);
+    await as(owner);
+    await expect(call("select public.add_portfolio($1,'x')", [`${owner}/a.webp`])).rejects.toThrow(/Gói Free/);
+  });
+  it("underpaid order does not credit; full payment credits once", async () => {
+    expect((await pay(1000)).r.result).toBe("UNDERPAID");
+    expect(await endOf()).toBeUndefined();
+    const { order, r } = await pay(99000);
+    expect(r.result).toBe("ACTIVATED");
+    const first = await endOf();
+    await as(null, "service_role");
+    const again = await call<{ r: any }>("select public.activate_subscription($1,99000,true) r", [Number(order.payos_order_code)]);
+    expect(again[0].r.result).toBe("ALREADY_PAID");
+    expect((await endOf())?.getTime()).toBe(first.getTime());
+    await as(customer);
+    expect((await call("select public.provider_accepts_bookings($1) a", [provider]))[0].a).toBe(true);
+  });
+  it("paying while active extends from the current end", async () => {
+    const before = await endOf();
+    await pay(99000);
+    const after = await endOf();
+    expect(after.getTime() - before.getTime()).toBe(sub() * 86400000);
+  });
+  it("RLS and manual extension are restricted", async () => {
+    await as(other);
+    expect(await call("select * from public.creator_subscriptions")).toHaveLength(0);
+    expect(await call("select * from public.subscription_orders")).toHaveLength(0);
+    await expect(call("insert into public.creator_subscriptions values($1,now(),now())", [provider])).rejects.toThrow(/permission denied/);
+    await expect(call("select public.admin_extend_subscription($1,5)", [provider])).rejects.toThrow(/admin/);
+    await as(owner);
+    expect(await call("select * from public.creator_subscriptions")).toHaveLength(1);
+    await as(admin);
+    const before = await endOf();
+    await as(admin);
+    await call("select public.admin_extend_subscription($1,5)", [provider]);
+    expect((await endOf()).getTime() - before.getTime()).toBe(5 * 86400000);
+  });
+  it("expired card blocks new bookings only", async () => {
+    await db.exec("reset role");
+    await db.query("update public.creator_subscriptions set current_period_end=now()-interval '1 day' where provider_id=$1", [provider]);
+    await as(customer);
+    expect((await call("select public.provider_accepts_bookings($1) a", [provider]))[0].a).toBe(false);
+    await db.exec("reset role");
+    await db.exec("update public.settings set subscription_enforced=false,free_portfolio_limit=10 where id");
   });
 });
