@@ -78,6 +78,31 @@ npx supabase functions deploy payos-webhook
 `create-payment-link` yêu cầu JWT; riêng `payos-webhook` xác thực chữ ký PayOS. Các bước deploy ở mục này dành riêng cho phase sau, không chạy trong phát hành chuyển cọc trực tiếp.
 
 Khi test local, cập nhật danh sách origin trong Supabase (giữ domain production và thêm đúng các origin cần dùng): `npx supabase secrets set ALLOWED_ORIGINS="https://beautyhub.example,http://localhost:4173,http://127.0.0.1:4173"`. Chỉ các origin được liệt kê mới qua CORS.
+## Creator Subscription (payOS)
+
+Nguồn thu duy nhất: thẻ thành viên 99.000đ / 30 ngày cho creator, không hoa hồng, không gói trả phí khác. Cọc booking vẫn chuyển trực tiếp qua VietQR.
+
+- Creator vào Studio → **Gói Creator** → *Kích hoạt*; `create-subscription-link` tạo link payOS (số tiền lấy từ `settings.subscription_price_vnd`), webhook `payos-webhook` gọi `activate_subscription` và cộng 30 ngày. Trả thêm khi còn hạn thì cộng nối vào ngày hết hạn; webhook gửi lại không cộng lần hai.
+- Hết hạn chỉ chặn booking mới; booking đã xác nhận giữ nguyên.
+- Gia hạn thủ công: Admin → **Gói Creator** → nhập số ngày → *Gia hạn* (có audit log).
+- Cờ `subscription_enforced` mặc định **tắt** (mọi creator vẫn nhận booking). Bật/tắt trong Supabase SQL Editor:
+
+```sql
+update public.settings set subscription_enforced = true where id;   -- bật
+update public.settings set subscription_enforced = false where id;  -- tắt
+```
+
+Khi bật: creator không có gói còn hạn không nhận booking mới (khách thấy "Creator chưa nhận booking") và Free chỉ thêm tối đa `free_portfolio_limit` (10) ảnh.
+
+Triển khai: chạy migration `202611120001_creator_subscription.sql`, rồi
+
+```sh
+npx supabase functions deploy create-subscription-link --use-api
+npx supabase functions deploy payos-webhook --no-verify-jwt --use-api
+```
+
+payOS không có sandbox: khi test hạ `subscription_price_vnd` xuống vài nghìn đồng, xong đặt lại 99000. Tiền vào tài khoản payOS của người đăng ký, nên chạy thật cần tài khoản riêng của dự án.
+
 ## Luồng giao dịch
 
 `REQUESTED → AWAITING_DEPOSIT → PAYMENT_REVIEW → CONFIRMED → COMPLETED → review`

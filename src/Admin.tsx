@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { AdminSubscriptions } from "./AdminSubscriptions";
 import {
   ArrowRight,
+  BadgeCheck,
   ClipboardList,
   Clock,
   FileText,
@@ -114,6 +116,7 @@ export function Admin() {
     ["providers", "Xác minh creator", ShieldCheck],
     ["bookings", "Tất cả booking", Wallet],
     ["users", "Người dùng", Users],
+    ["subscriptions", "Gói Creator", BadgeCheck],
     ["audit", "Lịch sử thao tác", FileText],
     ["settings", "Cấu hình mở beta", Settings],
   ] as const;
@@ -583,6 +586,7 @@ export function Admin() {
             </table>
           </section>
         )}
+        {tab === "subscriptions" && <AdminSubscriptions providers={providers} />}
         {tab === "audit" && (
           <section className="panel">
             <h2>100 thao tác gần nhất</h2>

@@ -845,6 +845,19 @@ export function Creator() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [accepts, setAccepts] = useState(true);
+
+  useEffect(() => {
+    if (!p?.id || !configured) return;
+    let live = true;
+    void rpc<boolean>("provider_accepts_bookings", { p_provider_id: p.id })
+      .then((ok) => live && setAccepts(ok !== false))
+      .catch(() => live && setAccepts(true));
+    return () => {
+      live = false;
+    };
+  }, [p?.id]);
+  const open = Boolean(settings?.ready) && accepts;
 
   const pkg =
     p?.packages.find((k) => k.id === selected && k.active) ||
@@ -1334,14 +1347,14 @@ export function Creator() {
                     {slots.length ? (
                       slots.map((s) => (
                         <Link
-                          className={`slot ${!settings?.ready ? "disabled" : ""}`}
+                          className={`slot ${!open ? "disabled" : ""}`}
                           key={s.starts_at}
                           to={
-                            settings?.ready
+                            open
                               ? `/checkout/${pkg.id}?start=${encodeURIComponent(s.starts_at)}`
                               : "#"
                           }
-                          aria-disabled={!settings?.ready}
+                          aria-disabled={!open}
                         >
                           <Clock size={12} />
                           {timeOnly(s.starts_at)}
@@ -1368,6 +1381,9 @@ export function Creator() {
 
               {!settings?.ready && (
                 <Alert>Private beta đang chuẩn bị mở đợt nhận cọc.</Alert>
+              )}
+              {settings?.ready && !accepts && (
+                <Alert>Creator chưa nhận booking.</Alert>
               )}
             </>
           ) : (

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
+  BadgeCheck,
   Check,
   CalendarDays,
   Camera,
@@ -51,6 +52,7 @@ import {
   Modal,
 } from "./ui";
 import { BookingCard } from "./Bookings";
+import { SubscriptionPanel } from "./SubscriptionPanel";
 
 type PackageDraft = {
   name: string;
@@ -690,9 +692,16 @@ function PackageEditor({
 }
 
 export function Studio() {
-  const { user, profile, providers, refresh, toast } = useApp();
+  const { user, profile, providers, settings, refresh, toast } = useApp();
   const own = providers.find((p) => p.owner_id === user!.id);
-  const [tab, setTab] = useState(own ? "overview" : "profile"),
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState(
+      searchParams.get("tab") === "subscription" && own
+        ? "subscription"
+        : own
+          ? "overview"
+          : "profile",
+    ),
     [bookings, setBookings] = useState<Booking[]>([]),
     [payoutAccount, setPayoutAccount] = useState<PayoutAccount | null>(null),
     [hours, setHours] = useState<
@@ -754,6 +763,7 @@ export function Studio() {
   const sections = [
     ["overview", "Tổng quan", LayoutDashboard],
     ["deposit", "Nhận cọc", DollarSign],
+    ["subscription", "Gói Creator", BadgeCheck],
     ["profile", "Hồ sơ creator", Settings],
     ["packages", "Gói dịch vụ", PackageIcon],
     ["portfolio", "Portfolio", Camera],
@@ -834,6 +844,9 @@ export function Studio() {
             Hãy cập nhật thông tin nhận cọc để khách có thể chuyển cọc trực tiếp
             cho bạn và xác nhận lịch.
           </Alert>
+        )}
+        {tab === "subscription" && own && (
+          <SubscriptionPanel providerId={own.id} settings={settings} />
         )}
         {tab === "deposit" && own && (
           <PayoutAccountEditor

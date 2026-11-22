@@ -196,6 +196,10 @@ export type Settings = {
   support_url: string;
   cancellation_policy: string;
   policy_version: number;
+  subscription_price_vnd: number;
+  subscription_period_days: number;
+  subscription_enforced: boolean;
+  free_portfolio_limit: number;
 };
 export type Booking = {
   id: string;
