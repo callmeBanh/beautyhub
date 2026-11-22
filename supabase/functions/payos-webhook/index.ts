@@ -137,6 +137,21 @@ Deno.serve(async (request) => {
     const service = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+    const success = body.success === true && body.data.code === "00";
+    const { data: subscription, error: subscriptionError } = await service.rpc(
+      "activate_subscription",
+      {
+        p_order_code: body.data.orderCode,
+        p_amount: body.data.amount,
+        p_success: success,
+      },
+    );
+    if (subscriptionError) {
+      return reply(500, { error: "Could not record subscription payment." });
+    }
+    if (subscription?.result !== "UNKNOWN_ORDER") {
+      return reply(200, { code: "00", desc: "success" });
+    }
     const { error } = await service.rpc("process_payos_payment", {
       p_event_id: `${body.data.orderCode}:${body.data.reference}`,
       p_order_code: body.data.orderCode,
@@ -147,7 +162,7 @@ Deno.serve(async (request) => {
         paymentLinkId: body.data.paymentLinkId ?? null,
         transactionDateTime: body.data.transactionDateTime ?? null,
       },
-      p_success: body.success === true && body.data.code === "00",
+      p_success: success,
     });
     if (error) return reply(500, { error: "Could not record payment event." });
     return reply(200, { code: "00", desc: "success" });
