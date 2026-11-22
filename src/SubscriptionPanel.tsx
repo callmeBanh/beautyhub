@@ -192,22 +192,30 @@ export function SubscriptionPanel({
         )}
       </div>
 
-      <div className="metrics">
+      <div className="metrics compact">
         <div className="metric">
           <small>Gói hiện tại</small>
-          <strong>{isFree ? "Free" : "Creator"}</strong>
+          <strong>
+            {isFree ? "Free" : "Creator"}
+          </strong>
         </div>
         <div className="metric">
           <small>Trạng thái</small>
-          <strong>{isFree ? "Miễn phí" : isActive ? "Hoạt động" : "Hết hạn"}</strong>
+          <strong>
+            {isFree ? "Miễn phí" : isActive ? "Hoạt động" : "Hết hạn"}
+          </strong>
         </div>
         <div className="metric">
           <small>Hạn dùng</small>
-          <strong>{hasEnd ? fmt(currentPeriodEnd!) : "—"}</strong>
+          <strong>
+            {hasEnd ? fmt(currentPeriodEnd!) : "—"}
+          </strong>
         </div>
         <div className="metric">
           <small>Phí duy trì</small>
-          <strong>{priceVnd}</strong>
+          <strong>
+            {priceVnd}
+          </strong>
         </div>
       </div>
 
@@ -217,19 +225,19 @@ export function SubscriptionPanel({
           {buttonLabel}
         </button>
         {isActive && (
-          <p className="muted" style={{ marginTop: "10px" }}>
+          <p className="muted sub-gap">
             Gia hạn khi còn hạn sẽ được cộng nối vào ngày hết hạn hiện tại.
           </p>
         )}
       </div>
 
       {actionError && (
-        <div style={{ marginTop: "16px" }}>
+        <div className="sub-gap">
           <Alert>{actionError}</Alert>
         </div>
       )}
 
-      <section style={{ marginTop: "28px" }}>
+      <section className="sub-section">
         <h3>Quyền lợi Gói Creator</h3>
         {[
           "Nhận booking mới từ khách",
@@ -243,7 +251,7 @@ export function SubscriptionPanel({
             </div>
           </div>
         ))}
-        <p className="muted" style={{ marginTop: "14px" }}>
+        <p className="muted sub-gap">
           BeautyHub không cam kết số lượng booking.
         </p>
       </section>

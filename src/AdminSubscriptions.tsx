@@ -119,16 +119,7 @@ export function AdminSubscriptions(props: {
 
               return (
                 <tr key={p.id}>
-                  <th
-                    scope="row"
-                    style={{
-                      textTransform: "none",
-                      fontSize: "inherit",
-                      letterSpacing: "normal",
-                      color: "inherit",
-                      fontWeight: 400,
-                    }}
-                  >
+                  <th scope="row">
                     <strong>{p.name}</strong>
                     <div className="muted">{labels[p.status] || p.status}</div>
                   </th>
@@ -137,7 +128,7 @@ export function AdminSubscriptions(props: {
                   </td>
                   <td>{hasPeriod ? formatDate(end) : "—"}</td>
                   <td>
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    <div className="inline-actions">
                       <input
                         type="number"
                         min={1}
@@ -146,7 +137,6 @@ export function AdminSubscriptions(props: {
                         onChange={(e) => setDaysMap((prev) => ({ ...prev, [p.id]: e.target.value }))}
                         aria-label={`Số ngày gia hạn cho ${p.name}`}
                         disabled={busyId === p.id}
-                        style={{ width: "5.5rem", padding: "8px 10px", minHeight: "38px" }}
                       />
                       <button
                         type="button"

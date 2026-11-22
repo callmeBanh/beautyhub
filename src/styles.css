@@ -2095,6 +2095,33 @@ th {
   padding: 13px 10px;
   border-bottom: 1px solid var(--line);
 }
+tbody th[scope="row"] {
+  text-transform: none;
+  font-size: inherit;
+  letter-spacing: normal;
+  color: inherit;
+  font-weight: 400;
+}
+.metrics.compact .metric strong {
+  font-size: 20px;
+  margin-top: 8px;
+}
+.inline-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.inline-actions input[type="number"] {
+  width: 5.5rem;
+  padding: 8px 10px;
+  min-height: 38px;
+}
+.sub-gap {
+  margin-top: 14px;
+}
+.sub-section {
+  margin-top: 28px;
+}
 td {
   padding: 16px 10px;
   border-bottom: 1px solid var(--color-line);
