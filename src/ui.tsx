@@ -22,6 +22,7 @@ import {
   minPrice,
   packageTextItems,
   persistedReviews,
+  hasCreatorPlan,
   type Provider,
   type FaqItem,
 } from "./domain";
@@ -155,6 +156,7 @@ export function ProviderCard({ p }: { p: Provider }) {
               Đã duyệt
             </span>
           </span>
+          {hasCreatorPlan(p) && <span className="verified creator-plan-badge">Creator</span>}
         </div>
         <span className="card-arrow" aria-hidden="true">
           <ArrowUpRight size={18} />

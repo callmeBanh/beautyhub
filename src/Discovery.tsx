@@ -43,6 +43,7 @@ import {
   filterProviders,
   deliveryDaysLabel,
   formatDuration,
+  hasCreatorPlan,
   localDate,
   minPrice,
   money,
@@ -957,6 +958,7 @@ export function Creator() {
                 <ShieldCheck size={14} />
                 Hồ sơ đã duyệt
               </span>
+              {hasCreatorPlan(p) && <span className="verified creator-plan-badge">Creator</span>}
             </div>
             <h1>{p.name}</h1>
             <div className="creator-stats-bar">

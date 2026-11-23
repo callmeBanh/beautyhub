@@ -172,6 +172,8 @@ export type Review = {
 };
 export type Provider = {
   completed_count?: number;
+  plan?: string | null;
+  expires_at?: string | null;
   id: string;
   owner_id: string;
   slug: string;
@@ -188,6 +190,10 @@ export type Provider = {
   rating_score?: number;
   response_time?: string;
 };
+
+export function hasCreatorPlan(provider: Pick<Provider, "plan" | "expires_at">): boolean {
+  return provider.plan === "creator" && !!provider.expires_at && Date.parse(provider.expires_at) > Date.now();
+}
 export type Settings = {
   ready: boolean;
   bank_name: string;
