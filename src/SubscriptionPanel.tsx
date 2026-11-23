@@ -12,7 +12,8 @@ export type SubscriptionSettings = {
 };
 
 type SubscriptionRecord = {
-  current_period_end: string | null;
+  plan: string | null;
+  expires_at: string | null;
 };
 
 function fmt(d: string): string {
@@ -50,9 +51,9 @@ export function SubscriptionPanel({
 
     async function fetchSub() {
       return client()
-        .from("creator_subscriptions")
-        .select("current_period_end")
-        .eq("provider_id", providerId)
+        .from("providers")
+        .select("plan,expires_at")
+        .eq("id", providerId)
         .maybeSingle();
     }
 
@@ -67,7 +68,7 @@ export function SubscriptionPanel({
         }
         setLoading(false);
 
-        const initialEnd = data?.current_period_end ?? null;
+        const initialEnd = data?.expires_at ?? null;
         const params = new URLSearchParams(window.location.search);
         const cancelled = params.get("cancel") === "true";
         const isReturning = (params.get("status") === "PAID" || Boolean(params.get("orderCode"))) && !cancelled;
@@ -78,9 +79,9 @@ export function SubscriptionPanel({
           try {
             const { data: latest, error: pollError } = await fetchSub();
             if (!active || pollError) return;
-            const newEnd = latest?.current_period_end ?? null;
+            const newEnd = latest?.expires_at ?? null;
             const isUpdated =
-              Boolean(newEnd) &&
+              latest?.plan === "creator" && Boolean(newEnd) &&
               (!initialEnd || new Date(newEnd!).getTime() > new Date(initialEnd).getTime());
             if (isUpdated) {
               setSubscription(latest ?? null);
@@ -92,13 +93,13 @@ export function SubscriptionPanel({
           } catch {
             // Ignore transient polling errors
           }
-        }, 3000);
+        }, 1000);
 
         timeoutId = setTimeout(() => {
           if (!active) return;
           if (intervalId) clearInterval(intervalId);
           setPollStatus((prev) => (prev === "polling" ? "timeout" : prev));
-        }, 60000);
+        }, 10000);
       } catch {
         if (active) {
           setFetchError("Không thể tải thông tin gói dịch vụ.");
@@ -138,11 +139,11 @@ export function SubscriptionPanel({
   const priceVnd = `${(settings?.subscription_price_vnd ?? 99000).toLocaleString("vi-VN")}đ`;
   const periodDays = settings?.subscription_period_days ?? 30;
   const freeLimit = settings?.free_portfolio_limit ?? 10;
-  const currentPeriodEnd = subscription?.current_period_end ?? null;
+  const currentPeriodEnd = subscription?.expires_at ?? null;
   const endMs = currentPeriodEnd ? Date.parse(currentPeriodEnd) : NaN;
   const hasEnd = Number.isFinite(endMs);
   const now = Date.now();
-  const isActive = hasEnd && endMs > now;
+  const isActive = subscription?.plan === "creator" && hasEnd && endMs > now;
   const isExpired = hasEnd && endMs <= now;
   const isFree = !hasEnd;
   const daysLeft = isActive ? Math.max(1, Math.ceil((endMs - now) / 86400000)) : 0;
