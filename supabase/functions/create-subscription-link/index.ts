@@ -153,6 +153,10 @@ Deno.serve(async (request) => {
       })
       .single();
     if (reserveError || !reserved) {
+      console.error("create-subscription-link: reserve_subscription_order failed", {
+        message: reserveError?.message ?? "RPC returned no order.",
+        code: reserveError?.code ?? null,
+      });
       throw new Error("Could not reserve subscription order.");
     }
     if (reserved.checkout_url) {
